@@ -21,13 +21,14 @@ Scan the full conversation for:
 
 ### 2. Read current TODO.md
 
-Check if `TODO.md` exists in the current directory:
+Check if `TODO.md` exists in the current working directory (the directory Claude
+was invoked in — NOT the home directory, not a subdirectory):
 - If it exists, read it to understand existing items
-- If it doesn't exist, create one
+- If it doesn't exist, create it in the current working directory
 
 ### 3. Update TODO.md
 
-Update (or create) `TODO.md` with a clear, scannable format:
+Update (or create) `TODO.md` in the current working directory with a clear, scannable format:
 
 ```markdown
 # TODO
@@ -61,13 +62,21 @@ Last updated: YYYY-MM-DD
 - Keep "Done" list trimmed — only last ~5-10 completed items
 - Use absolute dates, not relative ("2026-04-15" not "today")
 
-### 4. Invoke /save-notes
+### 4. Ensure TODO.md is gitignored
+
+If a `.gitignore` file exists in the current working directory, check whether
+`TODO.md` is already listed. If it isn't, add it so the file is never committed
+to the repo. TODO.md is personal working state, not project documentation.
+
+If no `.gitignore` exists in the directory, skip this step — don't create one.
+
+### 5. Invoke /save-notes
 
 After updating TODO.md, invoke `/save-notes` via the Skill tool to persist any
 decisions, feedback, or project knowledge from this session to the appropriate
 memory layer. This ensures nothing valuable from the session is lost.
 
-### 5. Present summary
+### 6. Present summary
 
 Give the user a brief recap:
 - What was accomplished
