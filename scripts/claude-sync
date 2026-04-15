@@ -1,0 +1,654 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Claude Code Configuration Sync
+# Syncs global memories, commands, settings, CLAUDE.md, and project memories
+# between ~/.claude/ and a git-backed config repo.
+#
+# Usage:
+#   claude-sync pull                      Pull config from repo to local ~/.claude/
+#   claude-sync push                      Push local ~/.claude/ config to repo
+#   claude-sync setup                     First-time setup on a new machine
+#   claude-sync status                    Show what differs between local and repo
+#   claude-sync add-project <name> [path] Register a project for memory syncing
+#   claude-sync doctor                    Diagnose common configuration issues
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+CLAUDE_DIR="$HOME/.claude"
+LOCAL_CONFIG="$REPO_DIR/.local-config.json"
+SYNC_RESULT="$REPO_DIR/.last-sync-result"
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
+
+encode_path() {
+  # Claude Code encodes project paths by replacing / with -
+  # /Users/joe/projects/my-app → -Users-joe-projects-my-app
+  echo "$1" | tr '/' '-'
+}
+
+ensure_jq() {
+  if ! command -v jq &>/dev/null; then
+    echo "ERROR: jq is required but not installed." >&2
+    echo "Install it: brew install jq (macOS) or sudo apt install jq (Linux)" >&2
+    return 1
+  fi
+}
+
+ensure_local_config() {
+  if [[ ! -f "$LOCAL_CONFIG" ]]; then
+    echo '{"projects":{}}' | jq . > "$LOCAL_CONFIG"
+  fi
+}
+
+get_projects() {
+  if [[ -f "$LOCAL_CONFIG" ]]; then
+    jq -r '.projects // {} | to_entries[] | "\(.key):\(.value)"' "$LOCAL_CONFIG" 2>/dev/null
+  fi
+}
+
+sync_dir() {
+  local src="$1" dst="$2"
+  if [[ -d "$src" ]]; then
+    mkdir -p "$dst"
+    rsync -a --delete "$src/" "$dst/"
+  fi
+}
+
+sync_dir_no_delete() {
+  local src="$1" dst="$2"
+  if [[ -d "$src" ]]; then
+    mkdir -p "$dst"
+    rsync -a "$src/" "$dst/"
+  fi
+}
+
+sync_file() {
+  local src="$1" dst="$2"
+  if [[ -f "$src" ]]; then
+    mkdir -p "$(dirname "$dst")"
+    cp "$src" "$dst"
+  fi
+}
+
+write_result() {
+  echo "$1" >> "$SYNC_RESULT"
+}
+
+clear_result() {
+  rm -f "$SYNC_RESULT"
+}
+
+# ── Settings Merge ───────────────────────────────────────────────────────────
+
+merge_settings_on_pull() {
+  local repo_settings="$REPO_DIR/global/settings.json"
+  local local_settings="$CLAUDE_DIR/settings.json"
+
+  if [[ ! -f "$repo_settings" ]]; then
+    return 0
+  fi
+
+  if [[ ! -f "$local_settings" ]]; then
+    cp "$repo_settings" "$local_settings"
+    return 0
+  fi
+
+  # Merge hooks, env, and enabledPlugins from repo into local.
+  # Preserve local permissions untouched.
+  local merged
+  merged=$(jq -s '
+    .[0] as $local | .[1] as $repo |
+    $local * {
+      hooks: ($repo.hooks // $local.hooks // {}),
+      env: (($local.env // {}) * ($repo.env // {})),
+      enabledPlugins: (($local.enabledPlugins // {}) * ($repo.enabledPlugins // {}))
+    }
+  ' "$local_settings" "$repo_settings")
+
+  echo "$merged" | jq . > "$local_settings.tmp"
+  mv "$local_settings.tmp" "$local_settings"
+}
+
+# ── Commands ─────────────────────────────────────────────────────────────────
+
+cmd_pull() {
+  clear_result
+  local had_error=false
+
+  if ! git -C "$REPO_DIR" pull --ff-only 2>"$SYNC_RESULT.git-err"; then
+    write_result "SYNC ERROR: git pull failed"
+    cat "$SYNC_RESULT.git-err" >> "$SYNC_RESULT" 2>/dev/null
+    rm -f "$SYNC_RESULT.git-err"
+    exit 0
+  fi
+  rm -f "$SYNC_RESULT.git-err"
+
+  local changes=""
+
+  # Sync global memory
+  if [[ -d "$REPO_DIR/global/memory" ]]; then
+    local before_mem=""
+    if [[ -d "$CLAUDE_DIR/memory" ]]; then
+      before_mem=$(find "$CLAUDE_DIR/memory" -type f -name "*.md" 2>/dev/null | sort)
+    fi
+    sync_dir "$REPO_DIR/global/memory" "$CLAUDE_DIR/memory"
+    local after_mem=$(find "$CLAUDE_DIR/memory" -type f -name "*.md" 2>/dev/null | sort)
+    if [[ "$before_mem" != "$after_mem" ]]; then
+      changes="${changes}Updated global memories\n"
+    fi
+  fi
+
+  # Sync global commands
+  if [[ -d "$REPO_DIR/global/commands" ]]; then
+    local before_cmd=""
+    if [[ -d "$CLAUDE_DIR/commands" ]]; then
+      before_cmd=$(find "$CLAUDE_DIR/commands" -type f -name "*.md" 2>/dev/null | sort)
+    fi
+    sync_dir "$REPO_DIR/global/commands" "$CLAUDE_DIR/commands"
+    local after_cmd=$(find "$CLAUDE_DIR/commands" -type f -name "*.md" 2>/dev/null | sort)
+    if [[ "$before_cmd" != "$after_cmd" ]]; then
+      changes="${changes}Updated global commands\n"
+    fi
+  fi
+
+  # Sync CLAUDE.md
+  if [[ -f "$REPO_DIR/global/CLAUDE.md" ]]; then
+    local changed_claude=false
+    if [[ ! -f "$CLAUDE_DIR/CLAUDE.md" ]]; then
+      changed_claude=true
+    elif ! diff -q "$REPO_DIR/global/CLAUDE.md" "$CLAUDE_DIR/CLAUDE.md" &>/dev/null; then
+      changed_claude=true
+    fi
+    sync_file "$REPO_DIR/global/CLAUDE.md" "$CLAUDE_DIR/CLAUDE.md"
+    if $changed_claude; then
+      changes="${changes}Updated global CLAUDE.md\n"
+    fi
+  fi
+
+  # Merge settings
+  if [[ -f "$REPO_DIR/global/settings.json" ]]; then
+    local before_settings=""
+    if [[ -f "$CLAUDE_DIR/settings.json" ]]; then
+      before_settings=$(cat "$CLAUDE_DIR/settings.json")
+    fi
+    merge_settings_on_pull
+    local after_settings=$(cat "$CLAUDE_DIR/settings.json")
+    if [[ "$before_settings" != "$after_settings" ]]; then
+      changes="${changes}Updated settings (hooks/env/plugins merged, permissions preserved)\n"
+    fi
+  fi
+
+  # Sync project memories
+  ensure_local_config
+  while IFS=: read -r name path; do
+    [[ -z "$name" ]] && continue
+    local encoded
+    encoded=$(encode_path "$path")
+    local repo_proj_mem="$REPO_DIR/projects/$name/memory"
+    local local_proj_mem="$CLAUDE_DIR/projects/$encoded/memory"
+
+    if [[ -d "$repo_proj_mem" ]]; then
+      local before_proj=""
+      if [[ -d "$local_proj_mem" ]]; then
+        before_proj=$(find "$local_proj_mem" -type f -name "*.md" 2>/dev/null | sort)
+      fi
+      sync_dir "$repo_proj_mem" "$local_proj_mem"
+      local after_proj=$(find "$local_proj_mem" -type f -name "*.md" 2>/dev/null | sort)
+      if [[ "$before_proj" != "$after_proj" ]]; then
+        changes="${changes}Updated project memories for '$name'\n"
+      fi
+    fi
+  done < <(get_projects)
+
+  if [[ -n "$changes" ]]; then
+    write_result "SYNC OK: Changes pulled:"
+    echo -e "$changes" >> "$SYNC_RESULT"
+  else
+    write_result "SYNC OK: Already up to date"
+  fi
+
+  exit 0
+}
+
+cmd_push() {
+  ensure_jq
+
+  sync_dir "$CLAUDE_DIR/memory" "$REPO_DIR/global/memory"
+  sync_dir "$CLAUDE_DIR/commands" "$REPO_DIR/global/commands"
+  sync_file "$CLAUDE_DIR/CLAUDE.md" "$REPO_DIR/global/CLAUDE.md"
+  sync_file "$CLAUDE_DIR/settings.json" "$REPO_DIR/global/settings.json"
+
+  ensure_local_config
+  while IFS=: read -r name path; do
+    [[ -z "$name" ]] && continue
+    local encoded
+    encoded=$(encode_path "$path")
+    local local_proj_mem="$CLAUDE_DIR/projects/$encoded/memory"
+    local repo_proj_mem="$REPO_DIR/projects/$name/memory"
+
+    if [[ -d "$local_proj_mem" ]]; then
+      sync_dir "$local_proj_mem" "$repo_proj_mem"
+    fi
+  done < <(get_projects)
+
+  cd "$REPO_DIR"
+  git add -A
+  if git diff --cached --quiet; then
+    echo "Nothing to push — already in sync."
+    return 0
+  fi
+
+  local timestamp
+  timestamp=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
+  git commit -m "sync: $timestamp"
+  git push
+
+  echo "Pushed config sync at $timestamp"
+}
+
+cmd_setup() {
+  ensure_jq
+
+  echo "Setting up Claude Code config sync..."
+  echo ""
+
+  # Create directories
+  mkdir -p "$CLAUDE_DIR/memory"
+  mkdir -p "$CLAUDE_DIR/commands"
+
+  ensure_local_config
+
+  # Pull config from repo
+  if [[ -d "$REPO_DIR/global/memory" ]] && [[ "$(ls -A "$REPO_DIR/global/memory" 2>/dev/null)" ]]; then
+    echo "Pulling global config from repo..."
+    sync_dir "$REPO_DIR/global/memory" "$CLAUDE_DIR/memory"
+    sync_dir_no_delete "$REPO_DIR/global/commands" "$CLAUDE_DIR/commands"
+    sync_file "$REPO_DIR/global/CLAUDE.md" "$CLAUDE_DIR/CLAUDE.md"
+    merge_settings_on_pull
+  else
+    echo "No existing config in repo — copying template defaults..."
+    sync_dir_no_delete "$REPO_DIR/global/commands" "$CLAUDE_DIR/commands"
+    sync_file "$REPO_DIR/global/CLAUDE.md" "$CLAUDE_DIR/CLAUDE.md"
+    merge_settings_on_pull
+  fi
+
+  # Sync project memories
+  while IFS=: read -r name path; do
+    [[ -z "$name" ]] && continue
+    local encoded
+    encoded=$(encode_path "$path")
+    local repo_proj_mem="$REPO_DIR/projects/$name/memory"
+    local local_proj_mem="$CLAUDE_DIR/projects/$encoded/memory"
+
+    if [[ -d "$repo_proj_mem" ]]; then
+      mkdir -p "$local_proj_mem"
+      sync_dir "$repo_proj_mem" "$local_proj_mem"
+      echo "  Synced project memories for '$name'"
+    fi
+  done < <(get_projects)
+
+  # Install session-start hooks
+  local settings="$CLAUDE_DIR/settings.json"
+  if [[ ! -f "$settings" ]]; then
+    echo '{}' > "$settings"
+  fi
+
+  if jq -e '.hooks.SessionStart[]? | select(.hooks[]? | select(.command? | contains("claude-sync")))' "$settings" &>/dev/null; then
+    echo "  Session-start sync hook already installed."
+  else
+    echo "  Installing session-start hooks..."
+    local sync_hook
+    sync_hook=$(cat <<'HOOKJSON'
+{
+  "matcher": "startup",
+  "hooks": [
+    {
+      "type": "command",
+      "command": "$HOME/claude-sync/scripts/claude-sync pull"
+    },
+    {
+      "type": "agent",
+      "prompt": "Check if the file at ~/claude-sync/.last-sync-result exists. If it does, read it and report to the user: if sync succeeded, summarize what changed (new/updated memories, commands, settings, project memories). If sync failed, tell the user what went wrong (network issue, git conflict, etc.) so they can fix it — but don't block the session. Then delete the file. If the file doesn't exist, say nothing about sync."
+    }
+  ]
+}
+HOOKJSON
+    )
+
+    # Also add the TODO.md hook if not present
+    local todo_hook
+    todo_hook=$(cat <<'HOOKJSON'
+{
+  "matcher": "startup",
+  "hooks": [
+    {
+      "type": "agent",
+      "prompt": "Check if TODO.md exists in the current directory. If it does, read it and provide a concise summary of the items and any recent changes."
+    }
+  ]
+}
+HOOKJSON
+    )
+
+    local updated
+    if jq -e '.hooks.SessionStart[]? | select(.hooks[]? | select(.prompt? | contains("TODO.md")))' "$settings" &>/dev/null; then
+      # TODO hook already exists, just add sync hook
+      updated=$(jq --argjson hook "$sync_hook" '
+        .hooks.SessionStart = ((.hooks.SessionStart // []) + [$hook])
+      ' "$settings")
+    else
+      # Add both hooks
+      updated=$(jq --argjson sync "$sync_hook" --argjson todo "$todo_hook" '
+        .hooks.SessionStart = ((.hooks.SessionStart // []) + [$todo, $sync])
+      ' "$settings")
+    fi
+    echo "$updated" | jq . > "$settings.tmp"
+    mv "$settings.tmp" "$settings"
+  fi
+
+  echo ""
+  echo "Setup complete!"
+  echo ""
+  echo "Next steps:"
+  echo "  1. Register projects you work on:"
+  echo "     claude-sync add-project my-app /path/to/my-app"
+  echo ""
+  echo "  2. Push your initial config:"
+  echo "     claude-sync push"
+  echo ""
+  echo "  3. Start a Claude Code session — sync runs automatically on startup"
+  echo ""
+  echo "  4. Run 'claude-sync doctor' to verify everything is configured correctly"
+}
+
+cmd_status() {
+  ensure_jq
+  local any_diff=false
+
+  echo "=== Claude Config Sync Status ==="
+  echo ""
+
+  if diff -rq "$CLAUDE_DIR/memory/" "$REPO_DIR/global/memory/" &>/dev/null; then
+    echo "  Global memory:    in sync"
+  else
+    echo "  Global memory:    DIFFERS"
+    any_diff=true
+  fi
+
+  if [[ -d "$CLAUDE_DIR/commands" ]] && [[ -d "$REPO_DIR/global/commands" ]]; then
+    if diff -rq "$CLAUDE_DIR/commands/" "$REPO_DIR/global/commands/" &>/dev/null; then
+      echo "  Global commands:  in sync"
+    else
+      echo "  Global commands:  DIFFERS"
+      any_diff=true
+    fi
+  elif [[ -d "$CLAUDE_DIR/commands" ]]; then
+    echo "  Global commands:  local only (not yet pushed)"
+    any_diff=true
+  else
+    echo "  Global commands:  (none)"
+  fi
+
+  if [[ -f "$CLAUDE_DIR/CLAUDE.md" ]] && [[ -f "$REPO_DIR/global/CLAUDE.md" ]]; then
+    if diff -q "$CLAUDE_DIR/CLAUDE.md" "$REPO_DIR/global/CLAUDE.md" &>/dev/null; then
+      echo "  Global CLAUDE.md: in sync"
+    else
+      echo "  Global CLAUDE.md: DIFFERS"
+      any_diff=true
+    fi
+  elif [[ -f "$CLAUDE_DIR/CLAUDE.md" ]]; then
+    echo "  Global CLAUDE.md: local only (not yet pushed)"
+    any_diff=true
+  else
+    echo "  Global CLAUDE.md: (none)"
+  fi
+
+  if [[ -f "$REPO_DIR/global/settings.json" ]]; then
+    if diff -q "$CLAUDE_DIR/settings.json" "$REPO_DIR/global/settings.json" &>/dev/null; then
+      echo "  Settings:         in sync"
+    else
+      echo "  Settings:         DIFFERS (permissions may intentionally differ)"
+      any_diff=true
+    fi
+  else
+    echo "  Settings:         not yet pushed"
+    any_diff=true
+  fi
+
+  echo ""
+  ensure_local_config
+  local has_projects=false
+  while IFS=: read -r name path; do
+    [[ -z "$name" ]] && continue
+    has_projects=true
+    local encoded
+    encoded=$(encode_path "$path")
+    local local_proj="$CLAUDE_DIR/projects/$encoded/memory"
+    local repo_proj="$REPO_DIR/projects/$name/memory"
+
+    if [[ -d "$local_proj" ]] && [[ -d "$repo_proj" ]]; then
+      if diff -rq "$local_proj/" "$repo_proj/" &>/dev/null; then
+        echo "  Project '$name': in sync"
+      else
+        echo "  Project '$name': DIFFERS"
+        any_diff=true
+      fi
+    elif [[ -d "$local_proj" ]]; then
+      echo "  Project '$name': local only (not yet pushed)"
+      any_diff=true
+    elif [[ -d "$repo_proj" ]]; then
+      echo "  Project '$name': repo only (run setup or pull)"
+      any_diff=true
+    fi
+  done < <(get_projects)
+
+  if ! $has_projects; then
+    echo "  Projects:         (none registered — use 'claude-sync add-project')"
+  fi
+
+  echo ""
+  if $any_diff; then
+    echo "Run 'claude-sync push' to upload, or 'claude-sync pull' to download."
+  else
+    echo "Everything is in sync."
+  fi
+}
+
+cmd_add_project() {
+  local name="${1:-}"
+  local path="${2:-$(pwd)}"
+
+  if [[ -z "$name" ]]; then
+    echo "Usage: claude-sync add-project <name> [path]" >&2
+    echo "" >&2
+    echo "  name  Canonical project identifier (e.g., my-app)" >&2
+    echo "  path  Absolute path to project (defaults to current directory)" >&2
+    return 1
+  fi
+
+  path="$(cd "$path" 2>/dev/null && pwd)"
+
+  ensure_jq
+  ensure_local_config
+
+  local updated
+  updated=$(jq --arg name "$name" --arg path "$path" '
+    .projects[$name] = $path
+  ' "$LOCAL_CONFIG")
+  echo "$updated" | jq . > "$LOCAL_CONFIG.tmp"
+  mv "$LOCAL_CONFIG.tmp" "$LOCAL_CONFIG"
+
+  local encoded
+  encoded=$(encode_path "$path")
+  echo "Registered project '$name'"
+  echo "  Path:    $path"
+  echo "  Encoded: $encoded"
+
+  mkdir -p "$REPO_DIR/projects/$name/memory"
+
+  local local_proj_mem="$CLAUDE_DIR/projects/$encoded/memory"
+  local repo_proj_mem="$REPO_DIR/projects/$name/memory"
+
+  if [[ -d "$local_proj_mem" ]] && [[ "$(ls -A "$local_proj_mem" 2>/dev/null)" ]]; then
+    echo "Copying local project memories to repo..."
+    sync_dir "$local_proj_mem" "$repo_proj_mem"
+  elif [[ -d "$repo_proj_mem" ]] && [[ "$(ls -A "$repo_proj_mem" 2>/dev/null)" ]]; then
+    echo "Copying repo project memories to local..."
+    mkdir -p "$local_proj_mem"
+    sync_dir "$repo_proj_mem" "$local_proj_mem"
+  else
+    echo "No existing memories found — they'll sync on next push/pull."
+  fi
+
+  echo ""
+  echo "Done. Run 'claude-sync push' to upload."
+}
+
+cmd_doctor() {
+  echo "=== Claude Sync Doctor ==="
+  echo ""
+  local issues=0
+
+  # Check jq
+  if command -v jq &>/dev/null; then
+    echo "  [OK] jq is installed ($(jq --version 2>&1))"
+  else
+    echo "  [!!] jq is NOT installed"
+    echo "       Install: brew install jq (macOS) or sudo apt install jq (Linux)"
+    ((issues++))
+  fi
+
+  # Check git
+  if command -v git &>/dev/null; then
+    echo "  [OK] git is installed ($(git --version 2>&1 | head -1))"
+  else
+    echo "  [!!] git is NOT installed"
+    ((issues++))
+  fi
+
+  # Check rsync
+  if command -v rsync &>/dev/null; then
+    echo "  [OK] rsync is installed"
+  else
+    echo "  [!!] rsync is NOT installed"
+    echo "       Install: brew install rsync (macOS) or sudo apt install rsync (Linux)"
+    ((issues++))
+  fi
+
+  # Check ~/.claude/ exists
+  if [[ -d "$CLAUDE_DIR" ]]; then
+    echo "  [OK] ~/.claude/ directory exists"
+  else
+    echo "  [!!] ~/.claude/ directory does NOT exist"
+    echo "       Run Claude Code at least once to create it, then run setup"
+    ((issues++))
+  fi
+
+  # Check settings.json exists
+  if [[ -f "$CLAUDE_DIR/settings.json" ]]; then
+    echo "  [OK] ~/.claude/settings.json exists"
+  else
+    echo "  [!!] ~/.claude/settings.json does NOT exist"
+    echo "       Run 'claude-sync setup' to create it"
+    ((issues++))
+  fi
+
+  # Check sync hook is installed
+  if [[ -f "$CLAUDE_DIR/settings.json" ]] && jq -e '.hooks.SessionStart[]? | select(.hooks[]? | select(.command? | contains("claude-sync")))' "$CLAUDE_DIR/settings.json" &>/dev/null; then
+    echo "  [OK] Session-start sync hook is installed"
+  else
+    echo "  [!!] Session-start sync hook is NOT installed"
+    echo "       Run 'claude-sync setup' to install it"
+    ((issues++))
+  fi
+
+  # Check TODO.md hook is installed
+  if [[ -f "$CLAUDE_DIR/settings.json" ]] && jq -e '.hooks.SessionStart[]? | select(.hooks[]? | select(.prompt? | contains("TODO.md")))' "$CLAUDE_DIR/settings.json" &>/dev/null; then
+    echo "  [OK] TODO.md session-start hook is installed"
+  else
+    echo "  [--] TODO.md session-start hook is not installed (optional)"
+  fi
+
+  # Check commands are installed
+  if [[ -d "$CLAUDE_DIR/commands" ]] && [[ "$(ls -A "$CLAUDE_DIR/commands" 2>/dev/null)" ]]; then
+    local cmd_count
+    cmd_count=$(find "$CLAUDE_DIR/commands" -name "*.md" | wc -l | tr -d ' ')
+    echo "  [OK] $cmd_count global commands installed in ~/.claude/commands/"
+  else
+    echo "  [!!] No global commands installed"
+    echo "       Run 'claude-sync setup' to install them"
+    ((issues++))
+  fi
+
+  # Check CLAUDE.md
+  if [[ -f "$CLAUDE_DIR/CLAUDE.md" ]]; then
+    echo "  [OK] Global ~/.claude/CLAUDE.md exists"
+  else
+    echo "  [--] No global ~/.claude/CLAUDE.md (optional — run setup to create one)"
+  fi
+
+  # Check git remote
+  if git -C "$REPO_DIR" remote get-url origin &>/dev/null; then
+    local remote
+    remote=$(git -C "$REPO_DIR" remote get-url origin 2>/dev/null)
+    echo "  [OK] Git remote configured: $remote"
+  else
+    echo "  [!!] No git remote configured"
+    echo "       Run: git -C $REPO_DIR remote add origin <your-repo-url>"
+    ((issues++))
+  fi
+
+  # Check for registered projects
+  ensure_local_config
+  local proj_count
+  proj_count=$(jq '.projects | length' "$LOCAL_CONFIG" 2>/dev/null || echo 0)
+  if [[ "$proj_count" -gt 0 ]]; then
+    echo "  [OK] $proj_count project(s) registered for memory syncing"
+    while IFS=: read -r name path; do
+      [[ -z "$name" ]] && continue
+      if [[ -d "$path" ]]; then
+        echo "       - $name: $path"
+      else
+        echo "       - $name: $path [PATH NOT FOUND]"
+        ((issues++))
+      fi
+    done < <(get_projects)
+  else
+    echo "  [--] No projects registered (use 'claude-sync add-project' to add one)"
+  fi
+
+  echo ""
+  if [[ $issues -eq 0 ]]; then
+    echo "All checks passed. Your setup looks good!"
+  else
+    echo "$issues issue(s) found. Run 'claude-sync setup' to fix most of them."
+  fi
+}
+
+# ── Main ─────────────────────────────────────────────────────────────────────
+
+case "${1:-}" in
+  pull)      cmd_pull ;;
+  push)      cmd_push ;;
+  setup)     cmd_setup ;;
+  status)    cmd_status ;;
+  doctor)    cmd_doctor ;;
+  add-project)
+    shift
+    cmd_add_project "$@"
+    ;;
+  *)
+    echo "Claude Code Configuration Sync"
+    echo ""
+    echo "Usage: claude-sync <command>"
+    echo ""
+    echo "Commands:"
+    echo "  pull                        Pull config from repo to ~/.claude/"
+    echo "  push                        Push ~/.claude/ config to repo"
+    echo "  setup                       First-time setup on a new machine"
+    echo "  status                      Show what differs between local and repo"
+    echo "  add-project <name> [path]   Register a project for memory syncing"
+    echo "  doctor                      Diagnose configuration issues"
+    ;;
+esac
