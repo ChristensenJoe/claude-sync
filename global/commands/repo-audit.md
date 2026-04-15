@@ -1,4 +1,4 @@
-# Branch Audit
+# Repo Audit
 
 Audit all files changed on the current branch against the project's rules and
 conventions. Produce a prioritized report of violations, then optionally fix them.
@@ -55,7 +55,7 @@ small categories). Each agent must:
 Merge agent findings into a single prioritized report:
 
 ```
-## Branch Audit Report
+## Repo Audit Report
 
 ### Critical Issues
 (numbered list — things that will break at runtime or violate hard rules)

@@ -159,9 +159,9 @@ Your global memories, commands, settings, and project memories are all there. Si
 
 ## Slash Commands
 
-These commands are installed globally and available in every Claude Code session. Use them by typing the command name (e.g., `/audit`).
+These commands are installed globally and available in every Claude Code session. Use them by typing the command name (e.g., `/repo-audit`).
 
-### `/audit` — Branch Audit
+### `/repo-audit` — Branch Audit
 
 Audit all changed files on your current branch against the project's documented rules.
 
@@ -171,6 +171,19 @@ Audit all changed files on your current branch against the project's documented 
 - Offers to fix violations
 
 **When to use:** Before opening a PR. After a large refactor. When onboarding to a codebase and want to verify your work matches conventions.
+
+### `/memory-audit` — Memory Hygiene
+
+Audit your Claude memory system for redundancy, staleness, and bloat. Scans global memories, project memories, and CLAUDE.md for issues that waste tokens and degrade quality.
+
+- Finds duplicate or overlapping memories across layers
+- Flags stale entries about completed work or deleted code
+- Catches memories stored in the wrong layer (global vs project vs rules)
+- Identifies verbose entries that could be trimmed
+- Detects MEMORY.md index drift (orphaned entries, missing links)
+- Offers to fix all issues with permission
+
+**When to use:** Weekly to monthly. When sessions feel slow or Claude seems confused by conflicting memories. After a big project milestone when lots of "in progress" memories are now stale.
 
 ### `/update-patterns` — Pattern Detection
 
