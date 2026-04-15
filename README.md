@@ -28,43 +28,19 @@ Every time you work with Claude, knowledge is created: you correct an approach, 
 **claude-sync turns that into a flywheel.** Three layers of persistent knowledge compound over time:
 
 ### Layer 1: Global Memory — Who You Are
+Your cross-project identity. How you like to work, what patterns you prefer, what mistakes Claude should never repeat. These follow you everywhere — every project, every device, every session.
 
-Your cross-project identity. How you like to work, what patterns you prefer, what mistakes Claude should never repeat. These follow you everywhere — across every project, every device, every session.
-
-| What gets stored | Example |
-|------------------|---------|
-| Coding style preferences | *"Prefer ternary expressions over if/else blocks unless the logic is genuinely clearer with if."* |
-| Corrections to Claude's behavior | *"Don't fabricate conventions — verify a rule exists in project docs before citing it as rationale."* |
-| Design philosophy | *"Don't abstract prematurely. Three similar lines of code are better than a premature helper function."* |
-| Communication preferences | *"Skip the trailing summary after each response — I can read the diff."* |
-
-**Stored at:** `~/.claude/memory/` — synced globally, read by Claude in every session.
+*"Skip the trailing summary — I can read the diff." "Don't abstract prematurely — three similar lines are better than a premature helper." "Always verify a convention exists in project docs before citing it as rationale."*
 
 ### Layer 2: Project Memory — What You Know
+Per-project tribal knowledge that Claude can't derive from the code alone. What you're working on, what the gotchas are, where things live outside the repo. This is loaded only when you're in that specific project.
 
-Per-project context that Claude can't derive from the code alone. This is your working knowledge of a specific codebase — the kind of tribal knowledge that takes weeks to build up and is lost when you context-switch.
-
-| What gets stored | Example |
-|------------------|---------|
-| Codebase corrections | *"The `organizationId` field is auto-injected by the query hook wrapper — don't flag it as missing from variables."* |
-| Active work context | *"Billing page migration is in progress — drawer component is done, form validation is remaining."* |
-| Naming / terminology | *"The legacy codebase calls them 'packages' but migrated code uses 'instances' — same concept, new name."* |
-| External references | *"Pipeline bugs are tracked in Linear project INGEST. The oncall dashboard is at grafana.internal/d/api-latency."* |
-
-**Stored at:** `~/.claude/projects/<project>/memory/` — synced per-project, only loaded when working in that project.
+*"Billing migration is in progress — drawer is done, form validation is remaining." "The `orgId` field is auto-injected by the hook wrapper, don't flag it as missing." "Deploy issues are tracked in the Linear project OPS-INFRA."*
 
 ### Layer 3: Repo Rules — What Everyone Knows
+Documented conventions in `CLAUDE.md` and `.claude/rules/` that live in the repo itself. These aren't personal — they're shared project documentation that any developer (human or AI) should follow. They travel with Git, not with claude-sync.
 
-Documented patterns, conventions, and architectural decisions in `CLAUDE.md` and `.claude/rules/`. Unlike the other layers, these aren't personal — they're shared project documentation that benefits every developer (human or AI) working in the repo.
-
-| What gets stored | Example |
-|------------------|---------|
-| Architecture decisions | *"Pages are thin shells (5-15 lines) that import from `features/<name>/pages/`. No business logic in route files."* |
-| Import conventions | *"Never import from `@mui/material` in app code — use `@massdriver/ui` individual imports instead."* |
-| Testing patterns | *"Behavioral tests preferred over snapshots. Test files co-located with source, not in `__tests__/` folders."* |
-| API conventions | *"All new queries target the v1 API. Legacy v0 queries are only modified in-place, never extended."* |
-
-**Stored at:** `CLAUDE.md` and `.claude/rules/` in the repo itself — travels with Git, not synced by claude-sync.
+*"Pages must be thin route shells — no business logic, max 15 lines." "All new API calls target v2. Legacy v1 endpoints are frozen." "Test files are co-located with source, never in a top-level `__tests__/` folder."*
 
 **The `/save-notes` command is the engine.** At the end of each session, it reviews your conversation and routes every finding to the right layer. Corrections become memories. Patterns become rules. Decisions become context. Nothing is lost.
 
