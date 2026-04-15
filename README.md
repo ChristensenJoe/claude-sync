@@ -14,7 +14,7 @@ Claude Code gets smarter the more you use it — but only on the machine you're 
 
 - **Portable configuration** — memories, commands, settings, and project knowledge sync to a Git repo and pull down on any machine
 - **Session-start hooks** — every session auto-pulls the latest config and checks your TODO list
-- **Professional workflows** — 7 slash commands for auditing, pattern detection, session management, and knowledge capture
+- **Professional workflows** — 8 slash commands for auditing, pattern detection, session management, and knowledge capture
 - **Cross-platform** — works on macOS, Linux, and WSL with any Claude account
 
 ---
@@ -119,17 +119,29 @@ This maps the project's local path to a canonical name in the repo. On another m
 
 ---
 
-## Daily Usage
+## Using claude-sync
 
-### Automatic: session-start hooks
+### What happens automatically
 
-Every Claude Code session triggers two hooks:
+Every Claude Code session triggers two hooks — no action required:
 
-1. **TODO.md check** — If a `TODO.md` exists in the working directory, Claude reads it and summarizes your current tasks. This gives you instant context on where you left off.
+**TODO.md context** — If a `TODO.md` exists in your working directory, Claude reads it and summarizes where you left off. No re-explaining what you were doing. No "let me catch you up." You sit down, open Claude, and your context is already there.
 
-2. **Config sync** — Pulls the latest config from your repo. If anything changed (new memories, updated commands, etc.), Claude tells you. If the pull fails (no network, conflict), Claude tells you that too — but never blocks your session.
+**Config sync** — Pulls the latest configuration from your repo. If you pushed changes from another machine, you'll see what's new. If the pull fails (no network, merge conflict), Claude tells you what went wrong so you can fix it — but never blocks your session.
 
-### Manual commands
+### A typical coding session
+
+The commands below are designed to bookend your work. At the start of a session, the hooks handle context automatically. At the end, a short ritual captures everything valuable before you close the terminal.
+
+**Start of session** — automatic. The hooks fire, you see your TODO summary and sync status. Start working.
+
+**During the session** — just code. The commands stay out of your way while you work.
+
+**End of session** — this is where the value compounds. Run `/save-notes` to capture any corrections, decisions, or patterns from the session into the right memory layer. Then run `/repo-audit` to verify your branch is clean against the project's rules before you step away. Together, these two commands take a minute and pay for themselves many times over — `/save-notes` makes the next session smarter, and `/repo-audit` catches issues while the context is still fresh rather than surfacing them in code review the next day.
+
+For longer sessions or when you're switching between tasks, `/recap` is a natural stopping point. It writes a TODO.md summarizing where things stand, which Claude reads back to you next time. The loop closes itself.
+
+### CLI commands
 
 ```bash
 # Push local config to your repo
@@ -159,9 +171,42 @@ Your global memories, commands, settings, and project memories are all there. Si
 
 ## Slash Commands
 
-These commands are installed globally and available in every Claude Code session. Use them by typing the command name (e.g., `/repo-audit`).
+All commands are installed globally and available in every Claude Code session.
 
-### `/repo-audit` — Branch Audit
+### Session workflow
+
+These commands are the core of the daily workflow — capturing knowledge and wrapping up sessions.
+
+#### `/save-notes` — Session Knowledge Capture
+
+The engine of the knowledge flywheel. Reviews your conversation and routes every finding to the right persistence layer:
+
+- **Repo rules** — Invokes `/update-patterns` to document conventions in `CLAUDE.md` and `.claude/rules/` (creates them even in projects that have none yet)
+- **Project memory** — Saves project-specific context: active work status, codebase gotchas, corrections, external references
+- **Global memory** — Saves cross-project preferences: collaboration style, coding philosophy, behavioral corrections
+
+Run this at the end of any session where Claude learned something — whether that's a correction you gave, a decision you made, or a pattern you established. This is what makes the next session better than the last one.
+
+#### `/recap` — Session Recap & TODO Update
+
+Summarize what was accomplished and update `TODO.md` for the next session.
+
+- Reviews the session for completed work, in-progress items, and blockers
+- Creates or updates `TODO.md` in the current working directory
+- Adds `TODO.md` to `.gitignore` if one exists (keeps it out of version control)
+- Invokes `/save-notes` to persist decisions and knowledge
+
+The TODO.md it writes is exactly what the session-start hook reads back to you next time — forming a complete session continuity loop.
+
+#### `/sync` — Manual Config Push
+
+Push your current configuration to the cloud repo. Run this after `/save-notes` if you want the captured knowledge available on another machine immediately, or let the next session's auto-pull handle it.
+
+### Code quality
+
+These commands help you maintain standards — auditing your branch against documented conventions and growing those conventions over time.
+
+#### `/repo-audit` — Branch Audit
 
 Audit all changed files on your current branch against the project's documented rules.
 
@@ -170,22 +215,9 @@ Audit all changed files on your current branch against the project's documented 
 - Produces a prioritized report: Critical → Architecture → Style → Clean Areas
 - Offers to fix violations
 
-**When to use:** Before opening a PR. After a large refactor. When onboarding to a codebase and want to verify your work matches conventions.
+Run this before opening a PR, after a large refactor, or at the end of a session to catch issues while the context is fresh.
 
-### `/memory-audit` — Memory Hygiene
-
-Audit your Claude memory system for redundancy, staleness, and bloat. Scans global memories, project memories, and CLAUDE.md for issues that waste tokens and degrade quality.
-
-- Finds duplicate or overlapping memories across layers
-- Flags stale entries about completed work or deleted code
-- Catches memories stored in the wrong layer (global vs project vs rules)
-- Identifies verbose entries that could be trimmed
-- Detects MEMORY.md index drift (orphaned entries, missing links)
-- Offers to fix all issues with permission
-
-**When to use:** Weekly to monthly. When sessions feel slow or Claude seems confused by conflicting memories. After a big project milestone when lots of "in progress" memories are now stale.
-
-### `/update-patterns` — Pattern Detection
+#### `/update-patterns` — Pattern Detection
 
 Analyze your branch for new patterns or conventions that aren't documented yet.
 
@@ -194,65 +226,41 @@ Analyze your branch for new patterns or conventions that aren't documented yet.
 - Proposes new rules with specific text and destination files
 - Creates `CLAUDE.md` and `.claude/rules/` if they don't exist yet
 
-**When to use:** After implementing a feature that establishes a new pattern. During code review when you notice undocumented conventions.
+Run this after implementing a feature that establishes a new pattern, or during code review when you notice undocumented conventions. Note: `/save-notes` invokes this automatically, so you often don't need to run it directly.
 
-### `/save-notes` — Session Knowledge Capture
+### Project onboarding
 
-The engine of the knowledge flywheel. Reviews your conversation and persists findings to the right layer.
-
-- **Layer 1 — Repo rules:** Invokes `/update-patterns` to document conventions (creates rules even in projects that have none yet)
-- **Layer 2 — Project memory:** Saves project-specific context, active work status, corrections
-- **Layer 3 — Global memory:** Saves cross-project preferences, collaboration style, role info
-
-**When to use:** At the end of every meaningful session. After receiving corrections from a code review. When you realize Claude keeps making the same mistake.
-
-### `/sync` — Manual Config Push
-
-Push your current configuration to the cloud repo.
-
-**When to use:** After making changes to memories, commands, or settings that you want available on other machines immediately.
-
-### `/doctor` — Health Check
-
-Diagnose common setup issues: missing dependencies, broken hooks, unregistered projects.
-
-**When to use:** After setup. When sync seems broken. On a new machine.
-
-### `/init-rules` — Bootstrap Project Rules
+#### `/init-rules` — Bootstrap Project Rules
 
 Scan a project's codebase and generate an initial `CLAUDE.md` and `.claude/rules/` with detected patterns, conventions, and architecture.
 
-**When to use:** When starting to use Claude in a project that has no Claude configuration. When onboarding a team to Claude Code.
+- Detects language, framework, and tooling from config files
+- Reads representative source files to identify patterns
+- Drafts a CLAUDE.md with project overview, file structure, build commands, and golden rules
+- Presents everything for approval before writing
 
-### `/recap` — Session Recap & TODO Update
+Run this when starting to use Claude in a project that has no Claude configuration, or when onboarding a team to Claude Code. You only need to run it once per project — after that, `/update-patterns` and `/save-notes` grow the documentation incrementally.
 
-Summarize what was accomplished and update `TODO.md` for the next session.
+### Maintenance
 
-- Reviews the session for completed work, in-progress items, blockers
-- Creates or updates `TODO.md` with current status
-- Invokes `/save-notes` to persist decisions and knowledge
-- Pairs with the TODO.md session-start hook for a complete workflow loop
+#### `/doctor` — Health Check
 
-**When to use:** At the end of every work session. The TODO.md you write is what Claude reads back to you next time.
+Diagnose common setup issues: missing dependencies, broken hooks, unregistered projects, stale config.
 
----
+Run this after initial setup, when sync seems broken, or on a new machine to verify everything is wired up.
 
-## Session-Start Hooks
+#### `/memory-audit` — Memory Hygiene
 
-Two hooks fire automatically when you start a Claude Code session:
+Audit your Claude memory system for redundancy, staleness, and bloat.
 
-### TODO.md Context Hook
+- Finds duplicate or overlapping memories across layers
+- Flags stale entries about completed work or deleted code
+- Catches memories stored in the wrong layer (global vs project vs rules)
+- Identifies verbose entries that could be trimmed
+- Detects MEMORY.md index drift (orphaned entries, missing links)
+- Offers to fix all issues with permission
 
-If a `TODO.md` exists in your working directory, Claude reads it and gives you a summary. This creates a simple but effective session continuity workflow:
-
-1. End of session: run `/recap` → updates TODO.md
-2. Start of next session: Claude reads TODO.md → you know where you left off
-
-No manual context loading. No "where was I?" No re-explaining the task.
-
-### Config Sync Hook
-
-Pulls the latest configuration from your repo. Reports what changed or any errors. Never blocks your session — if the network is down, you get a notification and continue working.
+Run this weekly to monthly. Every memory file is loaded into Claude's context window, so redundant or stale memories waste tokens and can cause conflicting instructions. Think of it as garbage collection for your AI knowledge base.
 
 ---
 
@@ -304,7 +312,7 @@ Both sync to `projects/my-app/memory/` in the repo.
 ```
 ├── global/
 │   ├── memory/           # Your global memories (builds up over time)
-│   ├── commands/         # Slash commands (7 included)
+│   ├── commands/         # Slash commands (8 included)
 │   ├── CLAUDE.md         # Global instructions
 │   └── settings.json     # Settings template with hooks
 ├── projects/
