@@ -294,7 +294,7 @@ cmd_setup() {
     echo '{}' > "$settings"
   fi
 
-  if jq -e '.hooks.SessionStart[]? | select(.hooks[]? | select(.command? | contains("claude-sync")))' "$settings" &>/dev/null; then
+  if jq -e '[.hooks.SessionStart[]?.hooks[]? | select(.command? // "" | contains("claude-sync"))] | length > 0' "$settings" &>/dev/null; then
     echo "  Session-start sync hook already installed."
   else
     echo "  Installing session-start hooks..."
@@ -332,7 +332,7 @@ HOOKJSON
     )
 
     local updated
-    if jq -e '.hooks.SessionStart[]? | select(.hooks[]? | select(.prompt? | contains("TODO.md")))' "$settings" &>/dev/null; then
+    if jq -e '[.hooks.SessionStart[]?.hooks[]? | select(.prompt? // "" | contains("TODO.md"))] | length > 0' "$settings" &>/dev/null; then
       # TODO hook already exists, just add sync hook
       updated=$(jq --argjson hook "$sync_hook" '
         .hooks.SessionStart = ((.hooks.SessionStart // []) + [$hook])
@@ -555,7 +555,7 @@ cmd_doctor() {
   fi
 
   # Check sync hook is installed
-  if [[ -f "$CLAUDE_DIR/settings.json" ]] && jq -e '.hooks.SessionStart[]? | select(.hooks[]? | select(.command? | contains("claude-sync")))' "$CLAUDE_DIR/settings.json" &>/dev/null; then
+  if [[ -f "$CLAUDE_DIR/settings.json" ]] && jq -e '[.hooks.SessionStart[]?.hooks[]? | select(.command? // "" | contains("claude-sync"))] | length > 0' "$CLAUDE_DIR/settings.json" &>/dev/null; then
     echo "  [OK] Session-start sync hook is installed"
   else
     echo "  [!!] Session-start sync hook is NOT installed"
@@ -564,7 +564,7 @@ cmd_doctor() {
   fi
 
   # Check TODO.md hook is installed
-  if [[ -f "$CLAUDE_DIR/settings.json" ]] && jq -e '.hooks.SessionStart[]? | select(.hooks[]? | select(.prompt? | contains("TODO.md")))' "$CLAUDE_DIR/settings.json" &>/dev/null; then
+  if [[ -f "$CLAUDE_DIR/settings.json" ]] && jq -e '[.hooks.SessionStart[]?.hooks[]? | select(.prompt? // "" | contains("TODO.md"))] | length > 0' "$CLAUDE_DIR/settings.json" &>/dev/null; then
     echo "  [OK] TODO.md session-start hook is installed"
   else
     echo "  [--] TODO.md session-start hook is not installed (optional)"
