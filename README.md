@@ -13,7 +13,7 @@ Claude Code gets smarter the more you use it — but only on the machine you're 
 **claude-sync** fixes that. It gives you:
 
 - **Portable configuration** — memories, commands, settings, and project knowledge sync to a Git repo and pull down on any machine
-- **Session-start hooks** — every session auto-pulls the latest config and checks your TODO list
+- **Session-start hooks** — every session auto-pulls the latest config and loads your branch notes
 - **Professional workflows** — 9 slash commands for auditing, pattern detection, session management, and knowledge capture
 - **Cross-platform** — works on macOS, Linux, and WSL with any Claude account
 
@@ -111,7 +111,7 @@ claude-sync add-project my-app /path/to/my-app \
 
 # Obsidian as note source
 claude-sync add-project my-app /path/to/my-app \
-  --notes obsidian --obsidian-vault ~/Documents/Vault --obsidian-note "Projects/my-app/TODO.md"
+  --notes obsidian --obsidian-vault ~/Documents/Vault --obsidian-note "Projects/my-app/notes.md"
 ```
 
 Projects are identified by their git remote URL (auto-detected), so worktrees and multiple clones of the same repo all resolve to the same project. The local path is stored for memory directory mapping. On another machine, register the same project with its local path there — the remote URL ties them together.

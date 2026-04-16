@@ -87,6 +87,6 @@ Only write files after the user confirms.
 ### 6. Suggest next steps
 
 After writing:
-- "Run `/audit` on your next branch to see these rules in action"
+- "Run `/repo-audit` on your next branch to see these rules in action"
 - "Run `/update-patterns` after your next feature to grow the docs"
-- "Run `/save-notes` at the end of sessions to capture decisions"
+- "Run `/learn` at the end of sessions to capture decisions"
