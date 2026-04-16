@@ -798,10 +798,10 @@ cmd_doctor() {
   fi
 
   # Check CLAUDE.md has session-start instructions (replaces agent hook)
-  if [[ -f "$CLAUDE_DIR/CLAUDE.md" ]] && grep -q "last-sync-result" "$CLAUDE_DIR/CLAUDE.md" 2>/dev/null; then
-    echo "  [OK] CLAUDE.md has session-start sync instructions"
+  if [[ -f "$CLAUDE_DIR/CLAUDE.md" ]] && grep -q "/status" "$CLAUDE_DIR/CLAUDE.md" 2>/dev/null; then
+    echo "  [OK] CLAUDE.md has /status first-interaction instruction"
   else
-    echo "  [--] CLAUDE.md missing session-start instructions (run setup to update)"
+    echo "  [--] CLAUDE.md missing /status instruction (add 'run /status on first interaction')"
   fi
 
   if [[ -d "$CLAUDE_DIR/commands" ]] && [[ "$(ls -A "$CLAUDE_DIR/commands" 2>/dev/null)" ]]; then
