@@ -386,6 +386,41 @@ HOOKJSON
     mv "$settings.tmp" "$settings"
   fi
 
+  # Install CLI symlink
+  local bin_dir="$HOME/.local/bin"
+  mkdir -p "$bin_dir"
+  local symlink="$bin_dir/claude-sync"
+
+  if [[ -L "$symlink" ]] || [[ -e "$symlink" ]]; then
+    rm -f "$symlink"
+  fi
+  ln -s "$REPO_DIR/scripts/claude-sync" "$symlink"
+  echo "  Installed claude-sync CLI at $symlink"
+
+  # Ensure ~/.local/bin is in PATH
+  if ! echo "$PATH" | tr ':' '\n' | grep -qx "$bin_dir"; then
+    local shell_rc=""
+    case "$(basename "${SHELL:-/bin/bash}")" in
+      zsh)  shell_rc="$HOME/.zshrc" ;;
+      bash)
+        if [[ -f "$HOME/.bashrc" ]]; then
+          shell_rc="$HOME/.bashrc"
+        else
+          shell_rc="$HOME/.profile"
+        fi
+        ;;
+      *)    shell_rc="$HOME/.profile" ;;
+    esac
+
+    if [[ -n "$shell_rc" ]] && ! grep -q '\.local/bin' "$shell_rc" 2>/dev/null; then
+      echo '' >> "$shell_rc"
+      echo '# Added by claude-sync setup' >> "$shell_rc"
+      echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$shell_rc"
+      echo "  Added ~/.local/bin to PATH in $shell_rc"
+      echo "  Run 'source $shell_rc' or open a new terminal for it to take effect."
+    fi
+  fi
+
   echo ""
   echo "Setup complete!"
   echo ""
@@ -702,6 +737,21 @@ cmd_doctor() {
     echo "  [OK] Global ~/.claude/CLAUDE.md exists"
   else
     echo "  [--] No global ~/.claude/CLAUDE.md (optional — run setup to create one)"
+  fi
+
+  # Check CLI symlink
+  if [[ -L "$HOME/.local/bin/claude-sync" ]]; then
+    echo "  [OK] claude-sync CLI symlink installed"
+  else
+    echo "  [--] claude-sync CLI symlink not installed (run setup to add it)"
+  fi
+
+  if echo "$PATH" | tr ':' '\n' | grep -qx "$HOME/.local/bin"; then
+    echo "  [OK] ~/.local/bin is in PATH"
+  else
+    echo "  [!!] ~/.local/bin is NOT in PATH"
+    echo "       Run setup or add 'export PATH=\"\$HOME/.local/bin:\$PATH\"' to your shell rc"
+    ((issues++))
   fi
 
   if git -C "$REPO_DIR" remote get-url origin &>/dev/null; then

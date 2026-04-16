@@ -94,6 +94,8 @@ This will:
 - Copy the template commands and CLAUDE.md to your local Claude config
 - Install two session-start hooks (branch notes + config sync)
 - Merge template settings into your existing `~/.claude/settings.json`
+- Install a `claude-sync` symlink at `~/.local/bin/` so you can run `claude-sync` from anywhere
+- Add `~/.local/bin` to your PATH if needed
 
 ### 4. Register your projects
 
@@ -101,14 +103,14 @@ For each project whose Claude memories and branch notes you want to sync:
 
 ```bash
 # Default — branch notes stored in sync repo
-~/claude-sync/scripts/claude-sync add-project my-app /path/to/my-app
+claude-sync add-project my-app /path/to/my-app
 
 # Notion as note source
-~/claude-sync/scripts/claude-sync add-project my-app /path/to/my-app \
+claude-sync add-project my-app /path/to/my-app \
   --notes notion --notion-page abc123def456
 
 # Obsidian as note source
-~/claude-sync/scripts/claude-sync add-project my-app /path/to/my-app \
+claude-sync add-project my-app /path/to/my-app \
   --notes obsidian --obsidian-vault ~/Documents/Vault --obsidian-note "Projects/my-app/TODO.md"
 ```
 
@@ -117,13 +119,13 @@ Projects are identified by their git remote URL (auto-detected), so worktrees an
 ### 5. Push your initial config
 
 ```bash
-~/claude-sync/scripts/claude-sync push
+claude-sync push
 ```
 
 ### 6. Verify
 
 ```bash
-~/claude-sync/scripts/claude-sync doctor
+claude-sync doctor
 ```
 
 ---
@@ -154,16 +156,16 @@ For longer sessions or when you're switching between tasks, `/recap` is a natura
 
 ```bash
 # Push local config to your repo
-~/claude-sync/scripts/claude-sync push
+claude-sync push
 
 # Check what's different between local and repo
-~/claude-sync/scripts/claude-sync status
+claude-sync status
 
 # Register a new project for memory syncing
-~/claude-sync/scripts/claude-sync add-project my-app /path/to/my-app
+claude-sync add-project my-app /path/to/my-app
 
 # Health check
-~/claude-sync/scripts/claude-sync doctor
+claude-sync doctor
 ```
 
 ### Adding another machine
@@ -171,7 +173,8 @@ For longer sessions or when you're switching between tasks, `/recap` is a natura
 ```bash
 git clone https://github.com/YOUR_USERNAME/YOUR_REPO_NAME ~/claude-sync
 ~/claude-sync/scripts/claude-sync setup
-~/claude-sync/scripts/claude-sync add-project my-app /home/you/projects/my-app
+# After setup, the short form works:
+claude-sync add-project my-app /home/you/projects/my-app
 ```
 
 Your global memories, commands, settings, and project memories are all there. Sign into any Claude account — the config is account-agnostic.
@@ -416,7 +419,7 @@ cat ~/claude-sync/.local-config.json
 If missing, register it:
 
 ```bash
-~/claude-sync/scripts/claude-sync add-project my-app /path/to/my-app
+claude-sync add-project my-app /path/to/my-app
 ```
 
 ### Full reset
@@ -431,7 +434,7 @@ git clone https://github.com/YOUR_USERNAME/YOUR_REPO_NAME ~/claude-sync
 ### Run a health check
 
 ```bash
-~/claude-sync/scripts/claude-sync doctor
+claude-sync doctor
 ```
 
 ---
