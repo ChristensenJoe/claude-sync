@@ -13,7 +13,12 @@ set -euo pipefail
 #   claude-sync add-project <name> [path] [options]  Register a project
 #   claude-sync doctor                    Diagnose common configuration issues
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Resolve symlinks so this works when invoked via ~/.local/bin/claude-sync
+SCRIPT_PATH="$0"
+if [[ -L "$SCRIPT_PATH" ]]; then
+  SCRIPT_PATH="$(readlink "$SCRIPT_PATH")"
+fi
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 CLAUDE_DIR="$HOME/.claude"
 LOCAL_CONFIG="$REPO_DIR/.local-config.json"
