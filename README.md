@@ -14,7 +14,7 @@ Claude Code gets smarter the more you use it — but only on the machine you're 
 
 - **Portable configuration** — memories, commands, settings, and project knowledge sync to a Git repo and pull down on any machine
 - **Session-start hooks** — every session auto-pulls the latest config and loads your branch notes
-- **Professional workflows** — 9 slash commands for auditing, pattern detection, session management, and knowledge capture
+- **Professional workflows** — 10 slash commands for auditing, pattern detection, session management, and knowledge capture
 - **Cross-platform** — works on macOS, Linux, and WSL with any Claude account
 
 ---
@@ -185,11 +185,25 @@ Your global memories, commands, settings, and project memories are all there. Si
 
 All commands are installed globally and available in every Claude Code session.
 
+| Command | Purpose | When to use |
+|---------|---------|-------------|
+| `/learn` | Capture session knowledge to the right memory layer | End of session, after corrections or decisions |
+| `/recap` | Write branch notes + invoke `/learn` | End of session, especially longer ones |
+| `/notes` | Read branch notes for current project/branch | After switching branches or worktrees mid-session |
+| `/commit` | Safe commit/push with context confirmation | Any time you're ready to commit |
+| `/sync` | Push config to cloud repo | After `/learn` if you want immediate cross-device sync |
+| `/repo-audit` | Audit branch against project rules | Before opening a PR, end of session |
+| `/update-patterns` | Detect undocumented patterns on branch | After establishing new conventions |
+| `/init-rules` | Bootstrap CLAUDE.md for a new project | Once per project, when onboarding |
+| `/doctor` | Health check for sync setup | After setup, when something seems broken |
+| `/memory-audit` | Clean up redundant/stale memories | Weekly to monthly |
+
+---
+
 ### Session workflow
 
-These commands are the core of the daily workflow — capturing knowledge, managing branch context, and wrapping up sessions.
-
-#### `/learn` — Session Knowledge Capture
+<details>
+<summary><b><code>/learn</code></b> — Session Knowledge Capture</summary>
 
 The engine of the knowledge flywheel. Reviews your conversation and routes every finding to the right persistence layer:
 
@@ -198,8 +212,10 @@ The engine of the knowledge flywheel. Reviews your conversation and routes every
 - **Global memory** — Saves cross-project preferences: collaboration style, coding philosophy, behavioral corrections
 
 Run this at the end of any session where Claude learned something — whether that's a correction you gave, a decision you made, or a pattern you established. This is what makes the next session better than the last one.
+</details>
 
-#### `/recap` — Session Recap & Branch Notes
+<details>
+<summary><b><code>/recap</code></b> — Session Recap & Branch Notes</summary>
 
 Summarize what was accomplished and write branch notes for the next session.
 
@@ -209,22 +225,39 @@ Summarize what was accomplished and write branch notes for the next session.
 - Invokes `/learn` to persist durable knowledge alongside the ephemeral branch state
 
 The branch notes it writes are exactly what the session-start hook reads back to you next time — forming a complete session continuity loop. Each branch gets its own notes, so worktrees never collide.
+</details>
 
-#### `/notes` — Read Branch Notes
+<details>
+<summary><b><code>/notes</code></b> — Read Branch Notes</summary>
 
 Manually load the branch notes for your current project and branch. This is the same logic that runs automatically on session start.
 
 Run this when you've navigated to a different worktree mid-session, switched branches, or just want to re-read where things stand. Lightweight and read-only.
+</details>
 
-#### `/sync` — Manual Config Push
+<details>
+<summary><b><code>/commit</code></b> — Safe Commit & Push</summary>
+
+Shows your current context (repo, branch, worktree, changes) before committing, so you never accidentally commit to the wrong branch in a multi-worktree setup.
+
+Options:
+- Commit with auto-generated or custom message
+- Commit and push with auto-generated or custom message
+- Switch branch first, then commit
+- Cancel
+
+</details>
+
+<details>
+<summary><b><code>/sync</code></b> — Manual Config Push</summary>
 
 Push your current configuration to the cloud repo. Run this after `/learn` if you want the captured knowledge available on another machine immediately, or let the next session's auto-pull handle it.
+</details>
 
 ### Code quality
 
-These commands help you maintain standards — auditing your branch against documented conventions and growing those conventions over time.
-
-#### `/repo-audit` — Branch Audit
+<details>
+<summary><b><code>/repo-audit</code></b> — Branch Audit</summary>
 
 Audit all changed files on your current branch against the project's documented rules.
 
@@ -234,8 +267,10 @@ Audit all changed files on your current branch against the project's documented 
 - Offers to fix violations
 
 Run this before opening a PR, after a large refactor, or at the end of a session to catch issues while the context is fresh.
+</details>
 
-#### `/update-patterns` — Pattern Detection
+<details>
+<summary><b><code>/update-patterns</code></b> — Pattern Detection</summary>
 
 Analyze your branch for new patterns or conventions that aren't documented yet.
 
@@ -245,10 +280,12 @@ Analyze your branch for new patterns or conventions that aren't documented yet.
 - Creates `CLAUDE.md` and `.claude/rules/` if they don't exist yet
 
 Run this after implementing a feature that establishes a new pattern, or during code review when you notice undocumented conventions. Note: `/learn` invokes this automatically, so you often don't need to run it directly.
+</details>
 
 ### Project onboarding
 
-#### `/init-rules` — Bootstrap Project Rules
+<details>
+<summary><b><code>/init-rules</code></b> — Bootstrap Project Rules</summary>
 
 Scan a project's codebase and generate an initial `CLAUDE.md` and `.claude/rules/` with detected patterns, conventions, and architecture.
 
@@ -258,16 +295,20 @@ Scan a project's codebase and generate an initial `CLAUDE.md` and `.claude/rules
 - Presents everything for approval before writing
 
 Run this when starting to use Claude in a project that has no Claude configuration, or when onboarding a team to Claude Code. You only need to run it once per project — after that, `/update-patterns` and `/learn` grow the documentation incrementally.
+</details>
 
 ### Maintenance
 
-#### `/doctor` — Health Check
+<details>
+<summary><b><code>/doctor</code></b> — Health Check</summary>
 
 Diagnose common setup issues: missing dependencies, broken hooks, unregistered projects, stale config.
 
 Run this after initial setup, when sync seems broken, or on a new machine to verify everything is wired up.
+</details>
 
-#### `/memory-audit` — Memory Hygiene
+<details>
+<summary><b><code>/memory-audit</code></b> — Memory Hygiene</summary>
 
 Audit your Claude memory system for redundancy, staleness, and bloat.
 
@@ -279,6 +320,7 @@ Audit your Claude memory system for redundancy, staleness, and bloat.
 - Offers to fix all issues with permission
 
 Run this weekly to monthly. Every memory file is loaded into Claude's context window, so redundant or stale memories waste tokens and can cause conflicting instructions. Think of it as garbage collection for your AI knowledge base.
+</details>
 
 ---
 
@@ -371,7 +413,7 @@ Both sync to `projects/my-app/` in the repo — same memories, same branch notes
 ```
 ├── global/
 │   ├── memory/               # Your global memories (builds up over time)
-│   ├── commands/             # Slash commands (9 included)
+│   ├── commands/             # Slash commands (10 included)
 │   ├── CLAUDE.md             # Global instructions
 │   └── settings.json         # Settings template with hooks
 ├── projects/
