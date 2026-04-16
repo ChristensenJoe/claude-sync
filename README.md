@@ -42,7 +42,7 @@ Documented conventions in `CLAUDE.md` and `.claude/rules/` that live in the repo
 
 *"Pages must be thin route shells — no business logic, max 15 lines." "All new API calls target v2. Legacy v1 endpoints are frozen." "Test files are co-located with source, never in a top-level `__tests__/` folder."*
 
-**The `/save-notes` command is the engine.** At the end of each session, it reviews your conversation and routes every finding to the right layer. Corrections become memories. Patterns become rules. Decisions become context. Nothing is lost.
+**The `/learn` command is the engine.** At the end of each session, it reviews your conversation and routes every finding to the right layer. Corrections become memories. Patterns become rules. Decisions become context. Nothing is lost.
 
 Over weeks and months, Claude stops being a generic assistant and becomes a collaborator that knows your codebase, your preferences, and your team's conventions. The flywheel accelerates: fewer corrections needed → more trust → more ambitious tasks delegated → more knowledge captured.
 
@@ -244,7 +244,7 @@ Analyze your branch for new patterns or conventions that aren't documented yet.
 - Proposes new rules with specific text and destination files
 - Creates `CLAUDE.md` and `.claude/rules/` if they don't exist yet
 
-Run this after implementing a feature that establishes a new pattern, or during code review when you notice undocumented conventions. Note: `/save-notes` invokes this automatically, so you often don't need to run it directly.
+Run this after implementing a feature that establishes a new pattern, or during code review when you notice undocumented conventions. Note: `/learn` invokes this automatically, so you often don't need to run it directly.
 
 ### Project onboarding
 

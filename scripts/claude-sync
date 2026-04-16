@@ -233,10 +233,13 @@ cmd_pull() {
       fi
     fi
 
-    # Sync branch notes
+    # Branch notes live in the repo and are read directly by Claude.
+    # git pull already brought them up to date — just report if any exist.
     local repo_branches="$REPO_DIR/projects/$name/branches"
-    if [[ -d "$repo_branches" ]]; then
-      changes="${changes}Synced branch notes for '$name'\n"
+    if [[ -d "$repo_branches" ]] && [[ "$(find "$repo_branches" -name "notes.md" 2>/dev/null)" ]]; then
+      local branch_count
+      branch_count=$(find "$repo_branches" -name "notes.md" 2>/dev/null | wc -l | tr -d ' ')
+      changes="${changes}Branch notes available for '$name' ($branch_count branch(es))\n"
     fi
   done < <(get_project_names)
 
@@ -376,9 +379,12 @@ HOOKJSON
     )
 
     local updated
+    # Remove existing branch notes hooks (if re-running setup), then install fresh
     updated=$(jq --argjson sync "$sync_hook" --argjson notes "$notes_hook" '
       .hooks.SessionStart = (
-        [.hooks.SessionStart[]? | select(.hooks[]?.prompt? // "" | (contains("TODO.md") or contains("branch notes")) | not)] +
+        [.hooks.SessionStart[]? | select(
+          (.hooks[]?.prompt? // "" | contains("branch notes")) | not
+        )] +
         [$notes, $sync]
       )
     ' "$settings")
@@ -609,7 +615,11 @@ cmd_add_project() {
       ;;
   esac
 
-  path="$(cd "$path" 2>/dev/null && pwd)"
+  if [[ ! -d "$path" ]]; then
+    echo "ERROR: Path does not exist: $path" >&2
+    return 1
+  fi
+  path="$(cd "$path" && pwd)"
 
   ensure_jq
   ensure_local_config
