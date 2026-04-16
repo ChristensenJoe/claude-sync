@@ -5,13 +5,16 @@ Customize this file to match your workflow — everything here is loaded automat
 
 ---
 
-## Session Start
+## Session Start — ALWAYS DO THIS FIRST
 
-At the beginning of every session, check if `~/claude-sync/.last-sync-result` exists. If it does, read it and report to the user:
-- **Sync status** — what was pulled (updated memories, commands, settings) or any errors
-- **Branch notes** — if the file contains a "BRANCH NOTES" section, summarize where things stand on this branch
+**Before responding to the user's first message in any session**, check if the file `~/claude-sync/.last-sync-result` exists. If it does:
+1. Read it
+2. Report a brief summary before your main response:
+   - What was synced (or "already up to date")
+   - Branch notes context if present (what's in progress, what's remaining)
+3. Delete the file after reading
 
-Then delete the file so it isn't reported again next session. If the file doesn't exist, say nothing.
+This is critical for session continuity — the branch notes tell you where the user left off last time. Do not skip this step.
 
 ---
 
