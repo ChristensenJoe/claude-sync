@@ -248,15 +248,26 @@ cmd_pull() {
     fi
   done < <(get_project_names)
 
+  # Build the result
+  local result=""
   if [[ -n "$changes" ]]; then
-    write_result "SYNC OK: Changes pulled:"
-    echo -e "$changes" >> "$SYNC_RESULT"
+    result="SYNC OK: Changes pulled:\n${changes}"
   else
-    write_result "SYNC OK: Already up to date"
+    result="SYNC OK: Already up to date"
   fi
 
-  # Resolve branch notes for the current working directory
-  resolve_branch_notes >> "$SYNC_RESULT" 2>/dev/null || true
+  # Resolve branch notes
+  local notes
+  notes=$(resolve_branch_notes 2>/dev/null) || true
+  if [[ -n "$notes" ]]; then
+    result="${result}\n${notes}"
+  fi
+
+  # Write to file (for /notes command to reference)
+  echo -e "$result" > "$SYNC_RESULT"
+
+  # Print to stdout — SessionStart command hook stdout is injected into Claude's context
+  echo -e "$result"
 
   exit 0
 }
