@@ -2,15 +2,15 @@
 set -euo pipefail
 
 # Claude Code Configuration Sync
-# Syncs global memories, commands, settings, CLAUDE.md, and project memories
-# between ~/.claude/ and a git-backed config repo.
+# Syncs global memories, commands, settings, CLAUDE.md, project memories,
+# and branch notes between ~/.claude/ and a git-backed config repo.
 #
 # Usage:
 #   claude-sync pull                      Pull config from repo to local ~/.claude/
 #   claude-sync push                      Push local ~/.claude/ config to repo
 #   claude-sync setup                     First-time setup on a new machine
 #   claude-sync status                    Show what differs between local and repo
-#   claude-sync add-project <name> [path] Register a project for memory syncing
+#   claude-sync add-project <name> [path] [options]  Register a project
 #   claude-sync doctor                    Diagnose common configuration issues
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -22,8 +22,12 @@ SYNC_RESULT="$REPO_DIR/.last-sync-result"
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 encode_path() {
-  # Claude Code encodes project paths by replacing / with -
-  # /Users/joe/projects/my-app → -Users-joe-projects-my-app
+  echo "$1" | tr '/' '-'
+}
+
+encode_branch() {
+  # Normalize branch names for use as directory names
+  # feature/billing → feature-billing
   echo "$1" | tr '/' '-'
 }
 
@@ -41,9 +45,38 @@ ensure_local_config() {
   fi
 }
 
-get_projects() {
+# Get project path from config — handles both old string format and new object format
+get_project_path() {
+  local name="$1"
+  local val
+  val=$(jq -r --arg n "$name" '.projects[$n] // empty' "$LOCAL_CONFIG" 2>/dev/null)
+  if [[ -z "$val" ]]; then
+    return 1
+  fi
+  # Check if it's a string (old format) or object (new format)
+  local type
+  type=$(jq -r --arg n "$name" '.projects[$n] | type' "$LOCAL_CONFIG" 2>/dev/null)
+  if [[ "$type" == "string" ]]; then
+    echo "$val"
+  else
+    jq -r --arg n "$name" '.projects[$n].path // empty' "$LOCAL_CONFIG" 2>/dev/null
+  fi
+}
+
+# Get project field from config (for new object format fields)
+get_project_field() {
+  local name="$1" field="$2"
+  local type
+  type=$(jq -r --arg n "$name" '.projects[$n] | type' "$LOCAL_CONFIG" 2>/dev/null)
+  if [[ "$type" == "object" ]]; then
+    jq -r --arg n "$name" --arg f "$field" '.projects[$n][$f] // empty' "$LOCAL_CONFIG" 2>/dev/null
+  fi
+}
+
+# Iterate projects as "name" lines (just names, look up fields separately)
+get_project_names() {
   if [[ -f "$LOCAL_CONFIG" ]]; then
-    jq -r '.projects // {} | to_entries[] | "\(.key):\(.value)"' "$LOCAL_CONFIG" 2>/dev/null
+    jq -r '.projects // {} | keys[]' "$LOCAL_CONFIG" 2>/dev/null
   fi
 }
 
@@ -94,8 +127,6 @@ merge_settings_on_pull() {
     return 0
   fi
 
-  # Merge hooks, env, and enabledPlugins from repo into local.
-  # Preserve local permissions untouched.
   local merged
   merged=$(jq -s '
     .[0] as $local | .[1] as $repo |
@@ -114,7 +145,6 @@ merge_settings_on_pull() {
 
 cmd_pull() {
   clear_result
-  local had_error=false
 
   if ! git -C "$REPO_DIR" pull --ff-only 2>"$SYNC_RESULT.git-err"; then
     write_result "SYNC ERROR: git pull failed"
@@ -179,15 +209,18 @@ cmd_pull() {
     fi
   fi
 
-  # Sync project memories
+  # Sync project memories and branch notes
   ensure_local_config
-  while IFS=: read -r name path; do
+  while read -r name; do
     [[ -z "$name" ]] && continue
+    local path
+    path=$(get_project_path "$name") || continue
     local encoded
     encoded=$(encode_path "$path")
+
+    # Sync memory
     local repo_proj_mem="$REPO_DIR/projects/$name/memory"
     local local_proj_mem="$CLAUDE_DIR/projects/$encoded/memory"
-
     if [[ -d "$repo_proj_mem" ]]; then
       local before_proj=""
       if [[ -d "$local_proj_mem" ]]; then
@@ -199,7 +232,13 @@ cmd_pull() {
         changes="${changes}Updated project memories for '$name'\n"
       fi
     fi
-  done < <(get_projects)
+
+    # Sync branch notes
+    local repo_branches="$REPO_DIR/projects/$name/branches"
+    if [[ -d "$repo_branches" ]]; then
+      changes="${changes}Synced branch notes for '$name'\n"
+    fi
+  done < <(get_project_names)
 
   if [[ -n "$changes" ]]; then
     write_result "SYNC OK: Changes pulled:"
@@ -220,17 +259,23 @@ cmd_push() {
   sync_file "$CLAUDE_DIR/settings.json" "$REPO_DIR/global/settings.json"
 
   ensure_local_config
-  while IFS=: read -r name path; do
+  while read -r name; do
     [[ -z "$name" ]] && continue
+    local path
+    path=$(get_project_path "$name") || continue
     local encoded
     encoded=$(encode_path "$path")
+
+    # Sync memory
     local local_proj_mem="$CLAUDE_DIR/projects/$encoded/memory"
     local repo_proj_mem="$REPO_DIR/projects/$name/memory"
-
     if [[ -d "$local_proj_mem" ]]; then
       sync_dir "$local_proj_mem" "$repo_proj_mem"
     fi
-  done < <(get_projects)
+
+    # Branch notes stay in the repo — no local copy needed, they're written
+    # directly to the repo by /recap
+  done < <(get_project_names)
 
   cd "$REPO_DIR"
   git add -A
@@ -253,29 +298,29 @@ cmd_setup() {
   echo "Setting up Claude Code config sync..."
   echo ""
 
-  # Create directories
   mkdir -p "$CLAUDE_DIR/memory"
   mkdir -p "$CLAUDE_DIR/commands"
 
   ensure_local_config
 
-  # Pull config from repo
   if [[ -d "$REPO_DIR/global/memory" ]] && [[ "$(ls -A "$REPO_DIR/global/memory" 2>/dev/null)" ]]; then
-    echo "Pulling global config from repo..."
+    echo "  Pulling global config from repo..."
     sync_dir "$REPO_DIR/global/memory" "$CLAUDE_DIR/memory"
     sync_dir_no_delete "$REPO_DIR/global/commands" "$CLAUDE_DIR/commands"
     sync_file "$REPO_DIR/global/CLAUDE.md" "$CLAUDE_DIR/CLAUDE.md"
     merge_settings_on_pull
   else
-    echo "No existing config in repo — copying template defaults..."
+    echo "  No existing config in repo — copying template defaults..."
     sync_dir_no_delete "$REPO_DIR/global/commands" "$CLAUDE_DIR/commands"
     sync_file "$REPO_DIR/global/CLAUDE.md" "$CLAUDE_DIR/CLAUDE.md"
     merge_settings_on_pull
   fi
 
   # Sync project memories
-  while IFS=: read -r name path; do
+  while read -r name; do
     [[ -z "$name" ]] && continue
+    local path
+    path=$(get_project_path "$name") || continue
     local encoded
     encoded=$(encode_path "$path")
     local repo_proj_mem="$REPO_DIR/projects/$name/memory"
@@ -286,7 +331,7 @@ cmd_setup() {
       sync_dir "$repo_proj_mem" "$local_proj_mem"
       echo "  Synced project memories for '$name'"
     fi
-  done < <(get_projects)
+  done < <(get_project_names)
 
   # Install session-start hooks
   local settings="$CLAUDE_DIR/settings.json"
@@ -316,15 +361,14 @@ cmd_setup() {
 HOOKJSON
     )
 
-    # Also add the TODO.md hook if not present
-    local todo_hook
-    todo_hook=$(cat <<'HOOKJSON'
+    local notes_hook
+    notes_hook=$(cat <<'HOOKJSON'
 {
   "matcher": "startup",
   "hooks": [
     {
       "type": "agent",
-      "prompt": "Check if TODO.md exists in the current directory. If it does, read it and provide a concise summary of the items and any recent changes."
+      "prompt": "Check for branch notes for the current project.\n\n1. Read the file at ~/claude-sync/.local-config.json. If it doesn't exist, say nothing and stop.\n2. Run `git remote get-url origin 2>/dev/null` in the current directory. If this fails (not a git repo), say nothing and stop.\n3. Match the remote URL against the `remote` field of each project in .local-config.json. If no match, say nothing and stop.\n4. Run `git branch --show-current` to get the branch name. Replace `/` with `-` in the branch name.\n5. Based on the project's `notes_source` (default is `sync`):\n   - sync: Read ~/claude-sync/projects/<project-name>/branches/<branch-name>/notes.md\n   - notion: Run `curl -s -H \"Authorization: Bearer $NOTION_API_KEY\" -H \"Notion-Version: 2022-06-28\" \"https://api.notion.com/v1/blocks/<notion_page_id>/children\"` and summarize the content.\n   - obsidian: Read the file at <obsidian_vault>/<obsidian_note>\n6. If notes exist, provide a concise summary of where things stand. If the file doesn't exist or is empty, say nothing."
     }
   ]
 }
@@ -332,17 +376,12 @@ HOOKJSON
     )
 
     local updated
-    if jq -e '[.hooks.SessionStart[]?.hooks[]? | select(.prompt? // "" | contains("TODO.md"))] | length > 0' "$settings" &>/dev/null; then
-      # TODO hook already exists, just add sync hook
-      updated=$(jq --argjson hook "$sync_hook" '
-        .hooks.SessionStart = ((.hooks.SessionStart // []) + [$hook])
-      ' "$settings")
-    else
-      # Add both hooks
-      updated=$(jq --argjson sync "$sync_hook" --argjson todo "$todo_hook" '
-        .hooks.SessionStart = ((.hooks.SessionStart // []) + [$todo, $sync])
-      ' "$settings")
-    fi
+    updated=$(jq --argjson sync "$sync_hook" --argjson notes "$notes_hook" '
+      .hooks.SessionStart = (
+        [.hooks.SessionStart[]? | select(.hooks[]?.prompt? // "" | (contains("TODO.md") or contains("branch notes")) | not)] +
+        [$notes, $sync]
+      )
+    ' "$settings")
     echo "$updated" | jq . > "$settings.tmp"
     mv "$settings.tmp" "$settings"
   fi
@@ -357,7 +396,7 @@ HOOKJSON
   echo "  2. Push your initial config:"
   echo "     claude-sync push"
   echo ""
-  echo "  3. Start a Claude Code session — sync runs automatically on startup"
+  echo "  3. Start a Claude Code session — sync and branch notes load automatically"
   echo ""
   echo "  4. Run 'claude-sync doctor' to verify everything is configured correctly"
 }
@@ -419,29 +458,42 @@ cmd_status() {
   echo ""
   ensure_local_config
   local has_projects=false
-  while IFS=: read -r name path; do
+  while read -r name; do
     [[ -z "$name" ]] && continue
     has_projects=true
+    local path
+    path=$(get_project_path "$name") || continue
     local encoded
     encoded=$(encode_path "$path")
     local local_proj="$CLAUDE_DIR/projects/$encoded/memory"
     local repo_proj="$REPO_DIR/projects/$name/memory"
+    local notes_source
+    notes_source=$(get_project_field "$name" "notes_source")
+    notes_source="${notes_source:-sync}"
 
+    # Memory status
     if [[ -d "$local_proj" ]] && [[ -d "$repo_proj" ]]; then
       if diff -rq "$local_proj/" "$repo_proj/" &>/dev/null; then
-        echo "  Project '$name': in sync"
+        echo "  Project '$name': memory in sync"
       else
-        echo "  Project '$name': DIFFERS"
+        echo "  Project '$name': memory DIFFERS"
         any_diff=true
       fi
     elif [[ -d "$local_proj" ]]; then
-      echo "  Project '$name': local only (not yet pushed)"
+      echo "  Project '$name': memory local only"
       any_diff=true
     elif [[ -d "$repo_proj" ]]; then
-      echo "  Project '$name': repo only (run setup or pull)"
+      echo "  Project '$name': memory repo only"
       any_diff=true
     fi
-  done < <(get_projects)
+
+    # Branch notes info
+    local branch_count=0
+    if [[ -d "$REPO_DIR/projects/$name/branches" ]]; then
+      branch_count=$(find "$REPO_DIR/projects/$name/branches" -name "notes.md" 2>/dev/null | wc -l | tr -d ' ')
+    fi
+    echo "  Project '$name': $branch_count branch note(s), source=$notes_source"
+  done < <(get_project_names)
 
   if ! $has_projects; then
     echo "  Projects:         (none registered — use 'claude-sync add-project')"
@@ -456,25 +508,100 @@ cmd_status() {
 }
 
 cmd_add_project() {
-  local name="${1:-}"
-  local path="${2:-$(pwd)}"
+  local name=""
+  local path=""
+  local notes_source="sync"
+  local notion_page_id=""
+  local obsidian_vault=""
+  local obsidian_note=""
+
+  # Parse args
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --notes)       notes_source="$2"; shift 2 ;;
+      --notion-page) notion_page_id="$2"; shift 2 ;;
+      --obsidian-vault) obsidian_vault="$2"; shift 2 ;;
+      --obsidian-note)  obsidian_note="$2"; shift 2 ;;
+      -*)
+        echo "Unknown option: $1" >&2
+        return 1
+        ;;
+      *)
+        if [[ -z "$name" ]]; then
+          name="$1"
+        elif [[ -z "$path" ]]; then
+          path="$1"
+        fi
+        shift
+        ;;
+    esac
+  done
+
+  path="${path:-$(pwd)}"
 
   if [[ -z "$name" ]]; then
-    echo "Usage: claude-sync add-project <name> [path]" >&2
+    echo "Usage: claude-sync add-project <name> [path] [options]" >&2
     echo "" >&2
-    echo "  name  Canonical project identifier (e.g., my-app)" >&2
-    echo "  path  Absolute path to project (defaults to current directory)" >&2
+    echo "  name                    Canonical project identifier (e.g., my-app)" >&2
+    echo "  path                    Absolute path to project (defaults to cwd)" >&2
+    echo "" >&2
+    echo "Options:" >&2
+    echo "  --notes sync|notion|obsidian   Note source (default: sync)" >&2
+    echo "  --notion-page ID               Notion page ID (required for notion)" >&2
+    echo "  --obsidian-vault PATH          Obsidian vault path (required for obsidian)" >&2
+    echo "  --obsidian-note PATH           Note path within vault (required for obsidian)" >&2
     return 1
   fi
+
+  # Validate notes source config
+  case "$notes_source" in
+    sync) ;;
+    notion)
+      if [[ -z "$notion_page_id" ]]; then
+        echo "ERROR: --notion-page is required when using --notes notion" >&2
+        return 1
+      fi
+      ;;
+    obsidian)
+      if [[ -z "$obsidian_vault" ]] || [[ -z "$obsidian_note" ]]; then
+        echo "ERROR: --obsidian-vault and --obsidian-note are required when using --notes obsidian" >&2
+        return 1
+      fi
+      ;;
+    *)
+      echo "ERROR: --notes must be sync, notion, or obsidian" >&2
+      return 1
+      ;;
+  esac
 
   path="$(cd "$path" 2>/dev/null && pwd)"
 
   ensure_jq
   ensure_local_config
 
+  # Auto-detect git remote
+  local remote=""
+  if git -C "$path" remote get-url origin &>/dev/null; then
+    remote=$(git -C "$path" remote get-url origin 2>/dev/null)
+  fi
+
+  # Build project config object
+  local project_json
+  project_json=$(jq -n \
+    --arg path "$path" \
+    --arg remote "$remote" \
+    --arg notes_source "$notes_source" \
+    --arg notion_page_id "$notion_page_id" \
+    --arg obsidian_vault "$obsidian_vault" \
+    --arg obsidian_note "$obsidian_note" \
+    '{path: $path, remote: $remote, notes_source: $notes_source} +
+     (if $notion_page_id != "" then {notion_page_id: $notion_page_id} else {} end) +
+     (if $obsidian_vault != "" then {obsidian_vault: $obsidian_vault} else {} end) +
+     (if $obsidian_note != "" then {obsidian_note: $obsidian_note} else {} end)')
+
   local updated
-  updated=$(jq --arg name "$name" --arg path "$path" '
-    .projects[$name] = $path
+  updated=$(jq --arg name "$name" --argjson proj "$project_json" '
+    .projects[$name] = $proj
   ' "$LOCAL_CONFIG")
   echo "$updated" | jq . > "$LOCAL_CONFIG.tmp"
   mv "$LOCAL_CONFIG.tmp" "$LOCAL_CONFIG"
@@ -482,11 +609,14 @@ cmd_add_project() {
   local encoded
   encoded=$(encode_path "$path")
   echo "Registered project '$name'"
-  echo "  Path:    $path"
-  echo "  Encoded: $encoded"
+  echo "  Path:         $path"
+  echo "  Remote:       ${remote:-<none detected>}"
+  echo "  Notes source: $notes_source"
 
   mkdir -p "$REPO_DIR/projects/$name/memory"
+  mkdir -p "$REPO_DIR/projects/$name/branches"
 
+  # Sync memories
   local local_proj_mem="$CLAUDE_DIR/projects/$encoded/memory"
   local repo_proj_mem="$REPO_DIR/projects/$name/memory"
 
@@ -510,7 +640,6 @@ cmd_doctor() {
   echo ""
   local issues=0
 
-  # Check jq
   if command -v jq &>/dev/null; then
     echo "  [OK] jq is installed ($(jq --version 2>&1))"
   else
@@ -519,7 +648,6 @@ cmd_doctor() {
     ((issues++))
   fi
 
-  # Check git
   if command -v git &>/dev/null; then
     echo "  [OK] git is installed ($(git --version 2>&1 | head -1))"
   else
@@ -527,93 +655,114 @@ cmd_doctor() {
     ((issues++))
   fi
 
-  # Check rsync
   if command -v rsync &>/dev/null; then
     echo "  [OK] rsync is installed"
   else
     echo "  [!!] rsync is NOT installed"
-    echo "       Install: brew install rsync (macOS) or sudo apt install rsync (Linux)"
     ((issues++))
   fi
 
-  # Check ~/.claude/ exists
   if [[ -d "$CLAUDE_DIR" ]]; then
     echo "  [OK] ~/.claude/ directory exists"
   else
     echo "  [!!] ~/.claude/ directory does NOT exist"
-    echo "       Run Claude Code at least once to create it, then run setup"
     ((issues++))
   fi
 
-  # Check settings.json exists
   if [[ -f "$CLAUDE_DIR/settings.json" ]]; then
     echo "  [OK] ~/.claude/settings.json exists"
   else
     echo "  [!!] ~/.claude/settings.json does NOT exist"
-    echo "       Run 'claude-sync setup' to create it"
     ((issues++))
   fi
 
-  # Check sync hook is installed
   if [[ -f "$CLAUDE_DIR/settings.json" ]] && jq -e '[.hooks.SessionStart[]?.hooks[]? | select(.command? // "" | contains("claude-sync"))] | length > 0' "$CLAUDE_DIR/settings.json" &>/dev/null; then
     echo "  [OK] Session-start sync hook is installed"
   else
     echo "  [!!] Session-start sync hook is NOT installed"
-    echo "       Run 'claude-sync setup' to install it"
     ((issues++))
   fi
 
-  # Check TODO.md hook is installed
-  if [[ -f "$CLAUDE_DIR/settings.json" ]] && jq -e '[.hooks.SessionStart[]?.hooks[]? | select(.prompt? // "" | contains("TODO.md"))] | length > 0' "$CLAUDE_DIR/settings.json" &>/dev/null; then
-    echo "  [OK] TODO.md session-start hook is installed"
+  if [[ -f "$CLAUDE_DIR/settings.json" ]] && jq -e '[.hooks.SessionStart[]?.hooks[]? | select(.prompt? // "" | contains("branch notes"))] | length > 0' "$CLAUDE_DIR/settings.json" &>/dev/null; then
+    echo "  [OK] Branch notes session-start hook is installed"
   else
-    echo "  [--] TODO.md session-start hook is not installed (optional)"
+    echo "  [--] Branch notes session-start hook is not installed (run setup)"
   fi
 
-  # Check commands are installed
   if [[ -d "$CLAUDE_DIR/commands" ]] && [[ "$(ls -A "$CLAUDE_DIR/commands" 2>/dev/null)" ]]; then
     local cmd_count
     cmd_count=$(find "$CLAUDE_DIR/commands" -name "*.md" | wc -l | tr -d ' ')
     echo "  [OK] $cmd_count global commands installed in ~/.claude/commands/"
   else
     echo "  [!!] No global commands installed"
-    echo "       Run 'claude-sync setup' to install them"
     ((issues++))
   fi
 
-  # Check CLAUDE.md
   if [[ -f "$CLAUDE_DIR/CLAUDE.md" ]]; then
     echo "  [OK] Global ~/.claude/CLAUDE.md exists"
   else
     echo "  [--] No global ~/.claude/CLAUDE.md (optional — run setup to create one)"
   fi
 
-  # Check git remote
   if git -C "$REPO_DIR" remote get-url origin &>/dev/null; then
     local remote
     remote=$(git -C "$REPO_DIR" remote get-url origin 2>/dev/null)
     echo "  [OK] Git remote configured: $remote"
   else
     echo "  [!!] No git remote configured"
-    echo "       Run: git -C $REPO_DIR remote add origin <your-repo-url>"
     ((issues++))
   fi
 
-  # Check for registered projects
+  # Check projects
   ensure_local_config
   local proj_count
   proj_count=$(jq '.projects | length' "$LOCAL_CONFIG" 2>/dev/null || echo 0)
   if [[ "$proj_count" -gt 0 ]]; then
-    echo "  [OK] $proj_count project(s) registered for memory syncing"
-    while IFS=: read -r name path; do
+    echo "  [OK] $proj_count project(s) registered"
+    while read -r name; do
       [[ -z "$name" ]] && continue
-      if [[ -d "$path" ]]; then
-        echo "       - $name: $path"
-      else
-        echo "       - $name: $path [PATH NOT FOUND]"
+      local path
+      path=$(get_project_path "$name") || continue
+      local notes_source
+      notes_source=$(get_project_field "$name" "notes_source")
+      notes_source="${notes_source:-sync}"
+      local remote
+      remote=$(get_project_field "$name" "remote")
+
+      local status_line="       - $name: $path (notes=$notes_source)"
+      if [[ ! -d "$path" ]]; then
+        status_line="$status_line [PATH NOT FOUND]"
         ((issues++))
       fi
-    done < <(get_projects)
+      echo "$status_line"
+
+      # Validate notes source config
+      case "$notes_source" in
+        notion)
+          local page_id
+          page_id=$(get_project_field "$name" "notion_page_id")
+          if [[ -z "$page_id" ]]; then
+            echo "         [!!] Notion page ID not configured"
+            ((issues++))
+          fi
+          if [[ -z "${NOTION_API_KEY:-}" ]]; then
+            echo "         [!!] NOTION_API_KEY environment variable not set"
+            ((issues++))
+          fi
+          ;;
+        obsidian)
+          local vault
+          vault=$(get_project_field "$name" "obsidian_vault")
+          if [[ -z "$vault" ]]; then
+            echo "         [!!] Obsidian vault path not configured"
+            ((issues++))
+          elif [[ ! -d "$vault" ]]; then
+            echo "         [!!] Obsidian vault not found: $vault"
+            ((issues++))
+          fi
+          ;;
+      esac
+    done < <(get_project_names)
   else
     echo "  [--] No projects registered (use 'claude-sync add-project' to add one)"
   fi
@@ -644,11 +793,17 @@ case "${1:-}" in
     echo "Usage: claude-sync <command>"
     echo ""
     echo "Commands:"
-    echo "  pull                        Pull config from repo to ~/.claude/"
-    echo "  push                        Push ~/.claude/ config to repo"
-    echo "  setup                       First-time setup on a new machine"
-    echo "  status                      Show what differs between local and repo"
-    echo "  add-project <name> [path]   Register a project for memory syncing"
-    echo "  doctor                      Diagnose configuration issues"
+    echo "  pull                              Pull config from repo to ~/.claude/"
+    echo "  push                              Push ~/.claude/ config to repo"
+    echo "  setup                             First-time setup on a new machine"
+    echo "  status                            Show what differs between local and repo"
+    echo "  add-project <name> [path] [opts]  Register a project"
+    echo "  doctor                            Diagnose configuration issues"
+    echo ""
+    echo "Add-project options:"
+    echo "  --notes sync|notion|obsidian      Note source (default: sync)"
+    echo "  --notion-page ID                  Notion page ID"
+    echo "  --obsidian-vault PATH             Obsidian vault path"
+    echo "  --obsidian-note PATH              Note path within vault"
     ;;
 esac

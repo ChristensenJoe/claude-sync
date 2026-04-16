@@ -1,6 +1,8 @@
-# Save Session Notes
+# Learn
 
-Review the current conversation and persist important findings to the right location.
+Review the current conversation and persist important findings to the right
+persistence layer. This is the engine of the knowledge flywheel — every `/learn`
+makes the next session smarter.
 
 ## Where things go
 

@@ -1,11 +1,11 @@
 # Session Recap
 
-Summarize what was accomplished in this session and update TODO.md with current
-status. Use at the end of a work session to capture progress and set up the next
-session for a clean start.
+Summarize what was accomplished in this session and write branch notes for the
+current project and branch. Use at the end of a work session to capture progress
+and set up the next session for a clean start.
 
-This pairs with the TODO.md session-start hook — what you write here is what
-Claude reads back to you when you start your next session.
+This pairs with the branch notes session-start hook — what you write here is what
+Claude reads back to you when you start your next session (or when you run `/notes`).
 
 ## Instructions
 
@@ -19,19 +19,30 @@ Scan the full conversation for:
 - **Blockers discovered** — issues that need resolution before continuing
 - **Next steps** — logical follow-ups that should happen next session
 
-### 2. Read current TODO.md
+### 2. Identify the project and branch
 
-Check if `TODO.md` exists in the current working directory (the directory Claude
-was invoked in — NOT the home directory, not a subdirectory):
-- If it exists, read it to understand existing items
-- If it doesn't exist, create it in the current working directory
+1. Read `~/claude-sync/.local-config.json`
+2. Run `git remote get-url origin` and match against registered projects' `remote` fields
+3. Run `git branch --show-current` to get the branch name
+4. Replace `/` with `-` in the branch name for the directory path
 
-### 3. Update TODO.md
+If the current directory is not a registered project, inform the user and suggest
+running `claude-sync add-project <name> [path]` to register it. Do not create
+notes outside the sync repo.
 
-Update (or create) `TODO.md` in the current working directory with a clear, scannable format:
+### 3. Read existing branch notes
+
+Check if `~/claude-sync/projects/<project-name>/branches/<branch-name>/notes.md`
+exists. If it does, read it to understand existing context.
+
+### 4. Write branch notes
+
+Create or update `notes.md` at
+`~/claude-sync/projects/<project-name>/branches/<branch-name>/notes.md`
+with a clear, scannable format:
 
 ```markdown
-# TODO
+# Branch Notes: <branch-name>
 
 Last updated: YYYY-MM-DD
 
@@ -50,7 +61,7 @@ Last updated: YYYY-MM-DD
 ## Blocked
 - [ ] Blocked item — what's blocking it and what needs to happen
 
-## Notes
+## Context
 - Any important context for next session
 - Decisions made that affect upcoming work
 ```
@@ -62,19 +73,13 @@ Last updated: YYYY-MM-DD
 - Keep "Done" list trimmed — only last ~5-10 completed items
 - Use absolute dates, not relative ("2026-04-15" not "today")
 
-### 4. Ensure TODO.md is gitignored
+### 5. Invoke /learn
 
-If a `.gitignore` file exists in the current working directory, check whether
-`TODO.md` is already listed. If it isn't, add it so the file is never committed
-to the repo. TODO.md is personal working state, not project documentation.
-
-If no `.gitignore` exists in the directory, skip this step — don't create one.
-
-### 5. Invoke /save-notes
-
-After updating TODO.md, invoke `/save-notes` via the Skill tool to persist any
+After writing branch notes, invoke `/learn` via the Skill tool to persist any
 decisions, feedback, or project knowledge from this session to the appropriate
-memory layer. This ensures nothing valuable from the session is lost.
+memory layer. This ensures nothing valuable from the session is lost — branch
+notes capture the ephemeral task state, while `/learn` captures the durable
+knowledge.
 
 ### 6. Present summary
 
@@ -82,4 +87,6 @@ Give the user a brief recap:
 - What was accomplished
 - What's remaining
 - Any blockers or decisions that need attention
-- Confirm TODO.md was updated
+- Confirm branch notes were written and where
+- Suggest running `/sync` to push immediately, or note that the next
+  `claude-sync push` will include the notes

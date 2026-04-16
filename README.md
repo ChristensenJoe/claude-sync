@@ -14,7 +14,7 @@ Claude Code gets smarter the more you use it — but only on the machine you're 
 
 - **Portable configuration** — memories, commands, settings, and project knowledge sync to a Git repo and pull down on any machine
 - **Session-start hooks** — every session auto-pulls the latest config and checks your TODO list
-- **Professional workflows** — 8 slash commands for auditing, pattern detection, session management, and knowledge capture
+- **Professional workflows** — 9 slash commands for auditing, pattern detection, session management, and knowledge capture
 - **Cross-platform** — works on macOS, Linux, and WSL with any Claude account
 
 ---
@@ -92,18 +92,27 @@ git clone https://github.com/YOUR_USERNAME/YOUR_REPO_NAME ~/claude-sync
 This will:
 - Create `~/.claude/memory/` and `~/.claude/commands/` if they don't exist
 - Copy the template commands and CLAUDE.md to your local Claude config
-- Install two session-start hooks (TODO.md check + config sync)
+- Install two session-start hooks (branch notes + config sync)
 - Merge template settings into your existing `~/.claude/settings.json`
 
 ### 4. Register your projects
 
-For each project whose Claude memories you want to sync:
+For each project whose Claude memories and branch notes you want to sync:
 
 ```bash
+# Default — branch notes stored in sync repo
 ~/claude-sync/scripts/claude-sync add-project my-app /path/to/my-app
+
+# Notion as note source
+~/claude-sync/scripts/claude-sync add-project my-app /path/to/my-app \
+  --notes notion --notion-page abc123def456
+
+# Obsidian as note source
+~/claude-sync/scripts/claude-sync add-project my-app /path/to/my-app \
+  --notes obsidian --obsidian-vault ~/Documents/Vault --obsidian-note "Projects/my-app/TODO.md"
 ```
 
-This maps the project's local path to a canonical name in the repo. On another machine, register the same project with its local path there.
+Projects are identified by their git remote URL (auto-detected), so worktrees and multiple clones of the same repo all resolve to the same project. The local path is stored for memory directory mapping. On another machine, register the same project with its local path there — the remote URL ties them together.
 
 ### 5. Push your initial config
 
@@ -125,7 +134,7 @@ This maps the project's local path to a canonical name in the repo. On another m
 
 Every Claude Code session triggers two hooks — no action required:
 
-**TODO.md context** — If a `TODO.md` exists in your working directory, Claude reads it and summarizes where you left off. No re-explaining what you were doing. No "let me catch you up." You sit down, open Claude, and your context is already there.
+**Branch notes** — Claude detects the current project (by git remote) and branch, then reads the branch notes from your configured source (sync repo, Notion, or Obsidian). You get a summary of where you left off on this specific branch. Works seamlessly with worktrees — each worktree's branch has its own notes.
 
 **Config sync** — Pulls the latest configuration from your repo. If you pushed changes from another machine, you'll see what's new. If the pull fails (no network, merge conflict), Claude tells you what went wrong so you can fix it — but never blocks your session.
 
@@ -133,13 +142,13 @@ Every Claude Code session triggers two hooks — no action required:
 
 The commands below are designed to bookend your work. At the start of a session, the hooks handle context automatically. At the end, a short ritual captures everything valuable before you close the terminal.
 
-**Start of session** — automatic. The hooks fire, you see your TODO summary and sync status. Start working.
+**Start of session** — automatic. The hooks fire, you see your branch notes and sync status. Start working.
 
-**During the session** — just code. The commands stay out of your way while you work.
+**During the session** — just code. If you switch branches or navigate to a different worktree mid-session, run `/notes` to load the context for where you are now.
 
-**End of session** — this is where the value compounds. Run `/save-notes` to capture any corrections, decisions, or patterns from the session into the right memory layer. Then run `/repo-audit` to verify your branch is clean against the project's rules before you step away. Together, these two commands take a minute and pay for themselves many times over — `/save-notes` makes the next session smarter, and `/repo-audit` catches issues while the context is still fresh rather than surfacing them in code review the next day.
+**End of session** — this is where the value compounds. Run `/learn` to capture any corrections, decisions, or patterns from the session into the right memory layer. Then run `/repo-audit` to verify your branch is clean against the project's rules before you step away. Together, these two commands take a minute and pay for themselves many times over — `/learn` makes the next session smarter, and `/repo-audit` catches issues while the context is still fresh rather than surfacing them in code review the next day.
 
-For longer sessions or when you're switching between tasks, `/recap` is a natural stopping point. It writes a TODO.md summarizing where things stand, which Claude reads back to you next time. The loop closes itself.
+For longer sessions or when you're switching between tasks, `/recap` is a natural stopping point. It writes branch notes summarizing where things stand, which Claude reads back to you next time. The loop closes itself.
 
 ### CLI commands
 
@@ -175,9 +184,9 @@ All commands are installed globally and available in every Claude Code session.
 
 ### Session workflow
 
-These commands are the core of the daily workflow — capturing knowledge and wrapping up sessions.
+These commands are the core of the daily workflow — capturing knowledge, managing branch context, and wrapping up sessions.
 
-#### `/save-notes` — Session Knowledge Capture
+#### `/learn` — Session Knowledge Capture
 
 The engine of the knowledge flywheel. Reviews your conversation and routes every finding to the right persistence layer:
 
@@ -187,20 +196,26 @@ The engine of the knowledge flywheel. Reviews your conversation and routes every
 
 Run this at the end of any session where Claude learned something — whether that's a correction you gave, a decision you made, or a pattern you established. This is what makes the next session better than the last one.
 
-#### `/recap` — Session Recap & TODO Update
+#### `/recap` — Session Recap & Branch Notes
 
-Summarize what was accomplished and update `TODO.md` for the next session.
+Summarize what was accomplished and write branch notes for the next session.
 
-- Reviews the session for completed work, in-progress items, and blockers
-- Creates or updates `TODO.md` in the current working directory
-- Adds `TODO.md` to `.gitignore` if one exists (keeps it out of version control)
-- Invokes `/save-notes` to persist decisions and knowledge
+- Reviews the session for completed work, in-progress items, blockers
+- Detects the current project (by git remote) and branch
+- Creates or updates `notes.md` in `projects/<name>/branches/<branch>/` in the sync repo
+- Invokes `/learn` to persist durable knowledge alongside the ephemeral branch state
 
-The TODO.md it writes is exactly what the session-start hook reads back to you next time — forming a complete session continuity loop.
+The branch notes it writes are exactly what the session-start hook reads back to you next time — forming a complete session continuity loop. Each branch gets its own notes, so worktrees never collide.
+
+#### `/notes` — Read Branch Notes
+
+Manually load the branch notes for your current project and branch. This is the same logic that runs automatically on session start.
+
+Run this when you've navigated to a different worktree mid-session, switched branches, or just want to re-read where things stand. Lightweight and read-only.
 
 #### `/sync` — Manual Config Push
 
-Push your current configuration to the cloud repo. Run this after `/save-notes` if you want the captured knowledge available on another machine immediately, or let the next session's auto-pull handle it.
+Push your current configuration to the cloud repo. Run this after `/learn` if you want the captured knowledge available on another machine immediately, or let the next session's auto-pull handle it.
 
 ### Code quality
 
@@ -239,7 +254,7 @@ Scan a project's codebase and generate an initial `CLAUDE.md` and `.claude/rules
 - Drafts a CLAUDE.md with project overview, file structure, build commands, and golden rules
 - Presents everything for approval before writing
 
-Run this when starting to use Claude in a project that has no Claude configuration, or when onboarding a team to Claude Code. You only need to run it once per project — after that, `/update-patterns` and `/save-notes` grow the documentation incrementally.
+Run this when starting to use Claude in a project that has no Claude configuration, or when onboarding a team to Claude Code. You only need to run it once per project — after that, `/update-patterns` and `/learn` grow the documentation incrementally.
 
 ### Maintenance
 
@@ -266,6 +281,39 @@ Run this weekly to monthly. Every memory file is loaded into Claude's context wi
 
 ## How It Works
 
+### Project identification
+
+Projects are identified by **git remote URL**, not directory path. When you register a project with `add-project`, the script auto-detects the remote from `git remote get-url origin`. The session-start hook and `/notes` command match against this remote, which means:
+
+- **Worktrees just work** — every worktree of the same repo shares the same remote
+- **Multiple clones work** — re-clone to a different path and it still resolves
+- **Cross-machine works** — different local paths, same remote, same project
+
+### Branch notes
+
+Each branch gets its own `notes.md` in the sync repo:
+
+```
+projects/my-app/branches/feature-billing/notes.md
+projects/my-app/branches/fix-auth-bug/notes.md
+```
+
+Branch names with `/` (e.g., `feature/billing`) are normalized to `-` (`feature-billing`). Notes are written by `/recap` and read by the session-start hook and `/notes`.
+
+### Note sources
+
+By default, branch notes are stored as markdown files in the sync repo. You can configure alternative sources per project:
+
+**Notion** — Notes are fetched from a Notion page via the API. Requires:
+- `NOTION_API_KEY` environment variable (create an [integration](https://www.notion.so/my-integrations))
+- A page ID configured via `--notion-page` during `add-project`
+
+**Obsidian** — Notes are read from a markdown file in an Obsidian vault. Requires:
+- Vault path configured via `--obsidian-vault`
+- Note path within the vault via `--obsidian-note`
+
+Note: Notion and Obsidian sources are read-only from Claude's perspective — the session-start hook and `/notes` can read from them, but `/recap` always writes to the sync repo. To use Notion or Obsidian as the write target, manage those notes manually and point Claude at them for reading.
+
 ### Path encoding
 
 Claude Code stores project configs at `~/.claude/projects/<encoded-path>/` where the path is encoded by replacing `/` with `-`:
@@ -275,7 +323,7 @@ Claude Code stores project configs at `~/.claude/projects/<encoded-path>/` where
 /home/alice/projects/my-app   →  -home-alice-projects-my-app
 ```
 
-The sync script maps these to canonical project names via `.local-config.json` (gitignored, machine-specific).
+The sync script computes this encoding automatically from the registered project path.
 
 ### Settings merge
 
@@ -283,27 +331,35 @@ On pull, the script merges `hooks`, `env`, and `enabledPlugins` from the repo in
 
 ### Project registration
 
-Each machine has a `.local-config.json` mapping canonical names to local paths:
+Each machine has a `.local-config.json` (gitignored) mapping project names to local config:
 
 ```json
 {
   "projects": {
-    "my-app": "/Users/alice/projects/my-app"
+    "my-app": {
+      "path": "/Users/alice/projects/my-app",
+      "remote": "git@github.com:org/my-app.git",
+      "notes_source": "sync"
+    }
   }
 }
 ```
 
-On another machine:
+On another machine, the same project with a different local path:
 
 ```json
 {
   "projects": {
-    "my-app": "/home/alice/projects/my-app"
+    "my-app": {
+      "path": "/home/alice/projects/my-app",
+      "remote": "git@github.com:org/my-app.git",
+      "notes_source": "sync"
+    }
   }
 }
 ```
 
-Both sync to `projects/my-app/memory/` in the repo.
+Both sync to `projects/my-app/` in the repo — same memories, same branch notes.
 
 ---
 
@@ -311,15 +367,18 @@ Both sync to `projects/my-app/memory/` in the repo.
 
 ```
 ├── global/
-│   ├── memory/           # Your global memories (builds up over time)
-│   ├── commands/         # Slash commands (8 included)
-│   ├── CLAUDE.md         # Global instructions
-│   └── settings.json     # Settings template with hooks
+│   ├── memory/               # Your global memories (builds up over time)
+│   ├── commands/             # Slash commands (9 included)
+│   ├── CLAUDE.md             # Global instructions
+│   └── settings.json         # Settings template with hooks
 ├── projects/
 │   └── <project-name>/
-│       └── memory/       # Project-scoped memories
+│       ├── memory/           # Project-scoped memories
+│       └── branches/
+│           └── <branch>/
+│               └── notes.md  # Branch-level session notes
 ├── scripts/
-│   └── claude-sync       # The sync engine
+│   └── claude-sync           # The sync engine
 ├── .gitignore
 └── README.md
 ```
