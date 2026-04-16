@@ -195,6 +195,7 @@ All commands are installed globally and available in every Claude Code session.
 | `/repo-audit` | Audit branch against project rules | Before opening a PR, end of session |
 | `/update-patterns` | Detect undocumented patterns on branch | After establishing new conventions |
 | `/init-rules` | Bootstrap CLAUDE.md for a new project | Once per project, when onboarding |
+| `/status` | Show sync status and branch notes | On demand, or auto-runs on first interaction |
 | `/doctor` | Health check for sync setup | After setup, when something seems broken |
 | `/memory-audit` | Clean up redundant/stale memories | Weekly to monthly |
 
