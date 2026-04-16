@@ -14,7 +14,7 @@ Claude Code gets smarter the more you use it — but only on the machine you're 
 
 - **Portable configuration** — memories, commands, settings, and project knowledge sync to a Git repo and pull down on any machine
 - **Session-start hooks** — every session auto-pulls the latest config and loads your branch notes
-- **Professional workflows** — 10 slash commands for auditing, pattern detection, session management, and knowledge capture
+- **Professional workflows** — 12 slash commands for auditing, pattern detection, session management, and knowledge capture
 - **Cross-platform** — works on macOS, Linux, and WSL with any Claude account
 
 ---
@@ -191,6 +191,7 @@ All commands are installed globally and available in every Claude Code session.
 | `/recap` | Write branch notes + invoke `/learn` | End of session, especially longer ones |
 | `/notes` | Read branch notes for current project/branch | After switching branches or worktrees mid-session |
 | `/commit` | Safe commit/push with context confirmation | Any time you're ready to commit |
+| `/worktrees` | List, create, switch, delete, and clean up worktrees | Managing parallel branches |
 | `/sync` | Push config to cloud repo | After `/learn` if you want immediate cross-device sync |
 | `/repo-audit` | Audit branch against project rules | Before opening a PR, end of session |
 | `/update-patterns` | Detect undocumented patterns on branch | After establishing new conventions |
@@ -246,6 +247,20 @@ Options:
 - Commit and push with auto-generated or custom message
 - Switch branch first, then commit
 - Cancel
+
+</details>
+
+<details>
+<summary><b><code>/worktrees</code></b> — Worktree Manager</summary>
+
+List, create, switch, and clean up git worktrees for the current repo.
+
+- Shows all worktrees with branch, path, and status (clean/dirty/merged)
+- Create new worktrees from any base branch
+- Switch to a worktree and auto-load branch notes via `/notes`
+- Delete worktrees with safety checks for uncommitted changes
+- Clean up merged worktrees (remove worktree, delete branch, clean up branch notes)
+- Prune stale worktree references
 
 </details>
 
@@ -414,7 +429,7 @@ Both sync to `projects/my-app/` in the repo — same memories, same branch notes
 ```
 ├── global/
 │   ├── memory/               # Your global memories (builds up over time)
-│   ├── commands/             # Slash commands (10 included)
+│   ├── commands/             # Slash commands (12 included)
 │   ├── CLAUDE.md             # Global instructions
 │   └── settings.json         # Settings template with hooks
 ├── projects/
