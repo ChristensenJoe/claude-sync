@@ -5,6 +5,16 @@ Customize this file to match your workflow — everything here is loaded automat
 
 ---
 
+## Session Start
+
+At the beginning of every session, check if `~/claude-sync/.last-sync-result` exists. If it does, read it and report to the user:
+- **Sync status** — what was pulled (updated memories, commands, settings) or any errors
+- **Branch notes** — if the file contains a "BRANCH NOTES" section, summarize where things stand on this branch
+
+Then delete the file so it isn't reported again next session. If the file doesn't exist, say nothing.
+
+---
+
 ## Post-Task Reporting
 
 After completing any task, provide a **## Changes Overview** section covering:
