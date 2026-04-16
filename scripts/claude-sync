@@ -263,7 +263,7 @@ cmd_pull() {
     result="${result}\n${notes}"
   fi
 
-  # Write to file (for /notes command to reference)
+  # Write to file (for /notes and /status to reference)
   echo -e "$result" > "$SYNC_RESULT"
 
   # Print to stdout — SessionStart command hook stdout is injected into Claude's context

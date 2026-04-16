@@ -5,6 +5,12 @@ Customize this file to match your workflow — everything here is loaded automat
 
 ---
 
+## First Interaction
+
+On your very first response in a new session, run `/status` before addressing the user's message. This reports sync status and branch notes so both you and the user have context on where things stand.
+
+---
+
 ## Post-Task Reporting
 
 After completing any task, provide a **## Changes Overview** section covering:
